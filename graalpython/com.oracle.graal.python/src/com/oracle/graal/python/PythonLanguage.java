@@ -30,6 +30,8 @@ import java.net.URL;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Arrays;
+import java.util.List;
 
 import org.graalvm.options.OptionDescriptors;
 
@@ -373,6 +375,11 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
             }
         }
         return null;
+    }
+
+    @Override
+    protected List<String> getCompletionTriggerCharacters() {
+        return Arrays.asList(".");
     }
 
     @Override
