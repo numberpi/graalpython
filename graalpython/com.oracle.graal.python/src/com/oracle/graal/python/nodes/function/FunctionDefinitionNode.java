@@ -36,9 +36,13 @@ import com.oracle.graal.python.nodes.statement.StatementNode;
 import com.oracle.graal.python.parser.DefinitionCellSlots;
 import com.oracle.graal.python.parser.ExecutionCellSlots;
 import com.oracle.graal.python.runtime.PythonCore;
+import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.instrumentation.StandardTags;
+import com.oracle.truffle.api.instrumentation.StandardTags.DeclarationTag;
+import com.oracle.truffle.api.instrumentation.Tag;
 import com.oracle.truffle.api.nodes.RootNode;
 
 public class FunctionDefinitionNode extends ExpressionDefinitionNode {
@@ -89,5 +93,26 @@ public class FunctionDefinitionNode extends ExpressionDefinitionNode {
 
     public RootNode getFunctionRoot() {
         return callTarget.getRootNode();
+    }
+
+    @Override
+    public boolean hasTag(Class<? extends Tag> tag) {
+        if (StandardTags.DeclarationTag.class == tag) {
+            return true;
+        }
+        return super.hasTag(tag);
+    }
+
+    @Override
+    public NodeObjectDescriptor getNodeObject() {
+        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
+        descriptor.addProperty(DeclarationTag.NAME, functionName);
+        if (enclosingClassName != null) {
+            descriptor.addProperty(DeclarationTag.CONTAINER, enclosingClassName);
+            descriptor.addProperty(DeclarationTag.KIND, DeclarationTag.Kind.Method.getValue());
+        } else {
+            descriptor.addProperty(DeclarationTag.KIND, DeclarationTag.Kind.Function.getValue());
+        }
+        return descriptor;
     }
 }

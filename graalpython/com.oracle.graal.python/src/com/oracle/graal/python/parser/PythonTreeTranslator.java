@@ -72,6 +72,7 @@ import com.oracle.graal.python.nodes.frame.ReadLocalNode;
 import com.oracle.graal.python.nodes.frame.ReadNode;
 import com.oracle.graal.python.nodes.frame.WriteNode;
 import com.oracle.graal.python.nodes.function.ClassBodyRootNode;
+import com.oracle.graal.python.nodes.function.ClassDefinitionNode;
 import com.oracle.graal.python.nodes.function.FunctionDefinitionNode;
 import com.oracle.graal.python.nodes.function.FunctionRootNode;
 import com.oracle.graal.python.nodes.function.GeneratorExpressionNode;
@@ -1479,6 +1480,7 @@ public final class PythonTreeTranslator extends Python3BaseVisitor<Object> {
         } else {
             funcDef = new FunctionDefinitionNode(funcName, enclosingClassName, doc, core, arity, defaults, ct, fd, environment.getDefinitionCellSlots(), environment.getExecutionCellSlots());
         }
+        deriveSourceSection(ctx, funcDef);
         environment.leaveScope();
 
         ReadNode funcVar = environment.findVariable(funcName);
@@ -1720,8 +1722,9 @@ public final class PythonTreeTranslator extends Python3BaseVisitor<Object> {
         ExpressionNode body = asClassBody(ctx.suite().accept(this), qualName);
         ClassBodyRootNode classBodyRoot = factory.createClassBodyRoot(deriveSourceSection(ctx), className, environment.getCurrentFrame(), body, environment.getExecutionCellSlots());
         RootCallTarget ct = Truffle.getRuntime().createCallTarget(classBodyRoot);
-        FunctionDefinitionNode funcDef = new FunctionDefinitionNode(className, null, null, core, Arity.createOneArgumentWithVarKwArgs(className),
+        FunctionDefinitionNode funcDef = new ClassDefinitionNode(className, null, null, core, Arity.createOneArgumentWithVarKwArgs(className),
                         factory.createBlock(), ct, environment.getCurrentFrame(), environment.getDefinitionCellSlots(), environment.getExecutionCellSlots());
+        deriveSourceSection(ctx, funcDef);
         environment.leaveScope();
 
         argumentNodes.add(0, factory.createStringLiteral(className));
