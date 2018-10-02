@@ -54,9 +54,12 @@ import com.oracle.graal.python.builtins.objects.PNone;
 import com.oracle.graal.python.builtins.objects.PythonAbstractObject;
 import com.oracle.graal.python.builtins.objects.cext.PythonNativeObject;
 import com.oracle.graal.python.builtins.objects.common.PHashingCollection;
+import com.oracle.graal.python.builtins.objects.function.Arity;
+import com.oracle.graal.python.builtins.objects.function.Arity.KeywordName;
 import com.oracle.graal.python.builtins.objects.function.PBuiltinFunction;
 import com.oracle.graal.python.builtins.objects.function.PFunction;
 import com.oracle.graal.python.builtins.objects.function.PKeyword;
+import com.oracle.graal.python.builtins.objects.function.PythonCallable;
 import com.oracle.graal.python.builtins.objects.list.PList;
 import com.oracle.graal.python.builtins.objects.method.PBuiltinMethod;
 import com.oracle.graal.python.builtins.objects.method.PMethod;
@@ -90,6 +93,7 @@ import com.oracle.graal.python.runtime.sequence.PSequence;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Specialization;
+import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.interop.CanResolve;
 import com.oracle.truffle.api.interop.KeyInfo;
 import com.oracle.truffle.api.interop.Message;
@@ -629,6 +633,38 @@ public class PythonMessageResolution {
 
         public Object access(Object object) {
             return keysNode.execute(object);
+        }
+    }
+
+    @Resolve(message = "de.hpi.swa.trufflelsp.interop.GetSignature")
+    @SuppressWarnings("unknown-message")
+    public abstract static class PForeignGetSignatureNode extends Node {
+
+        public Object access(@SuppressWarnings("unused") VirtualFrame frame, Object receiver) {
+            if (receiver instanceof PythonCallable) {
+                PythonCallable callable = (PythonCallable) receiver;
+                Arity arity = callable.getArity();
+                SignatureDescriptor signature = new SignatureDescriptor(callable.getName());
+
+                for (String paramId : arity.getParameterIds()) {
+                    if (receiver instanceof PMethod && paramId.equals("self")) {
+                        continue;
+                    }
+                    signature.addParameter(paramId);
+                }
+
+                if (arity.takesVarArgs()) {
+                    signature.addVarArgs();
+                }
+                for (KeywordName keywordName : arity.getKeywordNames()) {
+                    signature.addKeyword(keywordName.name);
+                }
+                if (arity.takesKeywordArgs()) {
+                    signature.addKeywordArgs();
+                }
+                return signature;
+            }
+            throw UnsupportedTypeException.raise(new Object[]{receiver});
         }
     }
 
