@@ -25,6 +25,7 @@
  */
 package com.oracle.graal.python.nodes.literal;
 
+import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
 
 public final class DoubleLiteralNode extends LiteralNode {
@@ -43,5 +44,12 @@ public final class DoubleLiteralNode extends LiteralNode {
     @Override
     public Object execute(VirtualFrame frame) {
         return value;
+    }
+
+    @Override
+    public Object getNodeObject() {
+        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
+        descriptor.addProperty("literal", factory().createFloat(value));
+        return descriptor;
     }
 }

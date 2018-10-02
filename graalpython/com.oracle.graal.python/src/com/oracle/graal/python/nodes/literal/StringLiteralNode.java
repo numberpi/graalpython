@@ -25,6 +25,7 @@
  */
 package com.oracle.graal.python.nodes.literal;
 
+import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
 
 public final class StringLiteralNode extends LiteralNode {
@@ -42,6 +43,13 @@ public final class StringLiteralNode extends LiteralNode {
 
     public String getValue() {
         return value;
+    }
+
+    @Override
+    public Object getNodeObject() {
+        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
+        descriptor.addProperty("literal", factory().createString(value));
+        return descriptor;
     }
 
     public static StringLiteralNode create(String string) {
