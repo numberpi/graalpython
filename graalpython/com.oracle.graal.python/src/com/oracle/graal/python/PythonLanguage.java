@@ -26,12 +26,13 @@
 package com.oracle.graal.python;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.URL;
 import java.text.MessageFormat;
 import java.util.ArrayList;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.graalvm.options.OptionDescriptors;
 
@@ -41,8 +42,8 @@ import com.oracle.graal.python.builtins.objects.PythonAbstractObject;
 import com.oracle.graal.python.builtins.objects.function.PArguments;
 import com.oracle.graal.python.builtins.objects.function.PBuiltinFunction;
 import com.oracle.graal.python.builtins.objects.function.PKeyword;
-import com.oracle.graal.python.builtins.objects.method.PBuiltinMethod;
 import com.oracle.graal.python.builtins.objects.function.PythonCallable;
+import com.oracle.graal.python.builtins.objects.method.PBuiltinMethod;
 import com.oracle.graal.python.builtins.objects.module.PythonModule;
 import com.oracle.graal.python.builtins.objects.object.PythonObject;
 import com.oracle.graal.python.builtins.objects.type.PythonBuiltinClass;
@@ -380,6 +381,47 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
     @Override
     protected List<String> getCompletionTriggerCharacters() {
         return Arrays.asList(".");
+    }
+
+    @Override
+    protected Object boxPrimitive(Object primitive) {
+        if (primitive instanceof Integer) {
+            return getCore().factory().createInt((Integer) primitive);
+        }
+
+        if (primitive instanceof Long) {
+            return getCore().factory().createInt((Long) primitive);
+        }
+
+        if (primitive instanceof Boolean) {
+            return getCore().factory().createInt((Boolean) primitive);
+        }
+
+        if (primitive instanceof Short) {
+            return getCore().factory().createInt((Short) primitive);
+        }
+
+        if (primitive instanceof Character) {
+            return getCore().factory().createInt((Character) primitive);
+        }
+
+        if (primitive instanceof Byte) {
+            return getCore().factory().createInt((Byte) primitive);
+        }
+
+        if (primitive instanceof BigInteger) {
+            return getCore().factory().createInt((BigInteger) primitive);
+        }
+
+        if (primitive instanceof Double || primitive instanceof Float) {
+            return getCore().factory().createFloat((Double) primitive);
+        }
+
+        if (primitive instanceof String) {
+            return getCore().factory().createString((String) primitive);
+        }
+
+        return null;
     }
 
     @Override
