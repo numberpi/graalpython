@@ -38,7 +38,9 @@ import com.oracle.graal.python.nodes.call.special.CallUnaryMethodNode;
 import com.oracle.graal.python.nodes.call.special.LookupAndCallBinaryNode;
 import com.oracle.graal.python.nodes.expression.ExpressionNode;
 import com.oracle.graal.python.nodes.frame.ReadGlobalOrBuiltinNode;
+import com.oracle.graal.python.nodes.frame.ReadLocalVariableNode;
 import com.oracle.graal.python.runtime.exception.PythonErrorType;
+import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.debug.DebuggerTags;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Fallback;
@@ -92,7 +94,12 @@ public abstract class PythonCallNode extends ExpressionNode {
             calleeName = ((ReadGlobalOrBuiltinNode) calleeNode).getAttributeId();
         } else if (calleeNode instanceof GetAttributeNode) {
             getCallableNode = GetCallAttributeNodeGen.create(((GetAttributeNode) calleeNode).getKey(), ((GetAttributeNode) calleeNode).getObject());
+            getCallableNode.assignSourceSection(calleeNode.getSourceSection());
+            calleeName = ((GetAttributeNode) calleeNode).getKey();
+        } else if (calleeNode instanceof ReadLocalVariableNode) {
+            calleeName = ((ReadLocalVariableNode) calleeNode).getSlot().getIdentifier().toString();
         }
+
         KeywordArgumentsNode keywordArgumentsNode = kwArgs == null && keywords.length == 0 ? null : KeywordArgumentsNode.create(keywords, kwArgs);
         if (starArgs == null) {
             return PythonCallNodeGen.create(calleeName, argumentNodes, null, keywordArgumentsNode, getCallableNode);
@@ -272,5 +279,12 @@ public abstract class PythonCallNode extends ExpressionNode {
 
     private boolean isBreakpoint(Class<?> tag) {
         return tag == DebuggerTags.AlwaysHalt.class && calleeName.equals(BuiltinNames.__BREAKPOINT__);
+    }
+
+    @Override
+    public Object getNodeObject() {
+        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
+        descriptor.addProperty("name", calleeName);
+        return descriptor;
     }
 }

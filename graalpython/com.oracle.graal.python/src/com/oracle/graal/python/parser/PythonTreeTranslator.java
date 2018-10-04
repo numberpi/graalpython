@@ -203,9 +203,18 @@ public final class PythonTreeTranslator extends Python3BaseVisitor<Object> {
         }
     }
 
+    protected void deriveSourceSection(RuleNode start, RuleNode stop, Object r) {
+        if (r instanceof PNode && ((PNode) r).getSourceSection() == null) {
+            SourceSection derivedSection = deriveSourceSection(start, stop);
+            if (derivedSection != null) {
+                ((PNode) r).assignSourceSection(derivedSection);
+            }
+        }
+    }
+
     private SourceSection createSourceSection(int start, int stop) {
         if (source.getLength() > start && source.getLength() >= stop) {
-            return source.createSection(start, stop);
+            return source.createSection(start, stop - start);
         } else {
             return source.createUnavailableSection();
         }
@@ -215,13 +224,33 @@ public final class PythonTreeTranslator extends Python3BaseVisitor<Object> {
         if (node instanceof Token) {
             int start = ((Token) node).getStartIndex();
             int stop = ((Token) node).getStopIndex();
-            return createSourceSection(start, stop);
+            return createSourceSection(start, stop + 1);
         } else if (node instanceof ParserRuleContext) {
             int start = ((ParserRuleContext) node).getStart().getStartIndex();
             int stop = ((ParserRuleContext) node).getStop().getStopIndex();
-            return createSourceSection(start, stop - start + 1);
+            return createSourceSection(start, stop + 1);
         }
         return null;
+    }
+
+    private SourceSection deriveSourceSection(RuleNode start, RuleNode stop) {
+        int startIdx = -1;
+        int stopIdx = -1;
+        if (start instanceof Token) {
+            startIdx = ((Token) start).getStartIndex();
+        } else if (start instanceof ParserRuleContext) {
+            startIdx = ((ParserRuleContext) start).getStart().getStartIndex();
+        } else {
+            return null;
+        }
+        if (stop instanceof Token) {
+            stopIdx = ((Token) stop).getStopIndex() + 1;
+        } else if (start instanceof ParserRuleContext) {
+            stopIdx = ((ParserRuleContext) stop).getStop().getStopIndex() + 1;
+        } else {
+            return null;
+        }
+        return createSourceSection(startIdx, stopIdx);
     }
 
     @Override
@@ -265,8 +294,10 @@ public final class PythonTreeTranslator extends Python3BaseVisitor<Object> {
             return super.visitAtom_expr(ctx);
         } else {
             ExpressionNode expr = (ExpressionNode) visitAtom(ctx.atom());
+            deriveSourceSection(ctx.atom(), expr);
             for (Python3Parser.TrailerContext t : ctx.trailer()) {
                 expr = visitTrailerFrom(expr, t);
+                deriveSourceSection(ctx.atom(), t, expr);
             }
             return expr;
         }
@@ -931,11 +962,15 @@ public final class PythonTreeTranslator extends Python3BaseVisitor<Object> {
     public Object visitDotted_as_name(Python3Parser.Dotted_as_nameContext ctx) {
         String dotted_name = ctx.dotted_name().getText();
         ExpressionNode importNode = factory.createImport(dotted_name).asExpression();
+        deriveSourceSection(ctx.dotted_name(), importNode);
+        StatementNode writeNode;
         if (ctx.NAME() != null) {
-            return environment.findVariable(ctx.NAME().getText()).makeWriteNode(getRhsImport(ctx.dotted_name(), importNode));
+            writeNode = environment.findVariable(ctx.NAME().getText()).makeWriteNode(getRhsImport(ctx.dotted_name(), importNode));
         } else {
-            return environment.findVariable(ctx.dotted_name().NAME(0).getText()).makeWriteNode(importNode);
+            writeNode = environment.findVariable(ctx.dotted_name().NAME(0).getText()).makeWriteNode(importNode);
         }
+        deriveSourceSection(ctx, writeNode);
+        return writeNode;
     }
 
     @Override
@@ -1583,6 +1618,7 @@ public final class PythonTreeTranslator extends Python3BaseVisitor<Object> {
             }
             if (argumentReadNode != null) {
                 argumentReads.add(argumentReadNode);
+                deriveSourceSection(child, argumentReadNode);
             }
         }
         environment.setDefaultArgumentReads(defaultReads.toArray(new ReadDefaultArgumentNode[0]));
