@@ -85,6 +85,7 @@ public class AssignmentTranslator extends Python3BaseVisitor<PNode> {
         List<NormassignContext> normassign = ctx.normassign();
         ExpressionNode mostRhs = getAssignmentValue(normassign);
         ExpressionNode mostLhs = (ExpressionNode) ctx.testlist_star_expr().accept(this);
+        translator.deriveSourceSection(ctx.testlist_star_expr(), mostLhs);
         if (normassign.size() > 1) {
             return createMultiAssignment(normassign, mostRhs, mostLhs);
         } else {
