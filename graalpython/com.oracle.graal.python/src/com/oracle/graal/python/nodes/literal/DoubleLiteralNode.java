@@ -49,7 +49,7 @@ public final class DoubleLiteralNode extends LiteralNode {
     @Override
     public Object getNodeObject() {
         NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("literal", factory().createFloat(value));
+        descriptor.addProperty("literal", value);
         return descriptor;
     }
 }

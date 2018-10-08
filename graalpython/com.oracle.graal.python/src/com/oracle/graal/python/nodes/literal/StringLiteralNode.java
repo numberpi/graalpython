@@ -48,7 +48,7 @@ public final class StringLiteralNode extends LiteralNode {
     @Override
     public Object getNodeObject() {
         NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("literal", factory().createString(value));
+        descriptor.addProperty("literal", value);
         return descriptor;
     }
 

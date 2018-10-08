@@ -49,7 +49,7 @@ public final class BooleanLiteralNode extends LiteralNode {
     @Override
     public Object getNodeObject() {
         NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("literal", factory().createInt(value));
+        descriptor.addProperty("literal", value);
         return descriptor;
     }
 }
