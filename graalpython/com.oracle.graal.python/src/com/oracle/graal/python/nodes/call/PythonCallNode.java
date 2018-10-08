@@ -285,7 +285,9 @@ public abstract class PythonCallNode extends ExpressionNode {
     public Object getNodeObject() {
         NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
         descriptor.addProperty("name", calleeName);
-        descriptor.addProperty("numberOfArguments", argumentNodes.length);
+        if (argumentNodes != null) {
+            descriptor.addProperty("numberOfArguments", argumentNodes.length);
+        }
         return descriptor;
     }
 }
