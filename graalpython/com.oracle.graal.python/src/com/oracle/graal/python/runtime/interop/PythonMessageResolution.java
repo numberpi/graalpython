@@ -226,8 +226,8 @@ public class PythonMessageResolution {
                 return factory.createTuple(new Object[0]);
             }
             PythonObject object = (PythonObject) obj;
-            Object[] attributeNames = object.getAttributeNames().toArray();
             if (isMapping.execute(object)) {
+                Object[] attributeNames = object.getAttributeNames().toArray();
                 PList keys = castToList.executeWith(keysNode.executeObject(object));
                 Object[] keysArray = keys.getSequenceStorage().getCopyOfInternalArray();
                 Object[] retVal = Arrays.copyOf(attributeNames, keysArray.length + attributeNames.length);
@@ -241,7 +241,7 @@ public class PythonMessageResolution {
                 }
                 return factory.createTuple(retVal);
             } else {
-                return factory.createTuple(attributeNames);
+                return factory.createTuple(object.getAllAttributeNames().stream().distinct().toArray());
             }
         }
     }
