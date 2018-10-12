@@ -647,7 +647,7 @@ public class PythonMessageResolution {
                 SignatureDescriptor signature = new SignatureDescriptor(callable.getName());
 
                 for (String paramId : arity.getParameterIds()) {
-                    if (receiver instanceof PMethod && paramId.equals("self")) {
+                    if ((receiver instanceof PMethod || receiver instanceof PBuiltinMethod) && paramId.equals("self")) {
                         continue;
                     }
                     signature.addParameter(paramId);

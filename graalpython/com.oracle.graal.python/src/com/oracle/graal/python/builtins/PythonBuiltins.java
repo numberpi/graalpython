@@ -167,7 +167,15 @@ public abstract class PythonBuiltins {
             maxNumPosArgs++;
         }
 
-        return new Arity(builtin.name(), minNumPosArgs, maxNumPosArgs, builtin.takesVarKeywordArgs(), builtin.takesVarArgs(), keywordNames);
+        List<String> parameters = new ArrayList<>();
+        parameters.add("self");
+        for (char c = 'a', i = 1; i < minNumPosArgs; c++, i++) {
+            parameters.add(String.valueOf(c));
+        }
+
+        return new Arity(builtin.name(), minNumPosArgs, maxNumPosArgs,
+                        builtin.takesVarKeywordArgs(), builtin.takesVarArgs(), false,
+                        parameters, keywordNames);
     }
 
     private void setBuiltinFunction(String name, BoundBuiltinCallable<?> function) {
