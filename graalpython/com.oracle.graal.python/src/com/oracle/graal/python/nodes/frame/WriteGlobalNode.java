@@ -145,7 +145,7 @@ public abstract class WriteGlobalNode extends StatementNode implements GlobalNod
         storeNode.executeVoid(PArguments.getGlobals(frame), value);
     }
 
-    public Object getAttributeId() {
+    public String getAttributeId() {
         return attributeId;
     }
 }

@@ -39,6 +39,8 @@ import org.graalvm.options.OptionDescriptors;
 import com.oracle.graal.python.builtins.Python3Core;
 import com.oracle.graal.python.builtins.objects.PNone;
 import com.oracle.graal.python.builtins.objects.PythonAbstractObject;
+import com.oracle.graal.python.builtins.objects.common.HashingStorage.DictEntry;
+import com.oracle.graal.python.builtins.objects.dict.PDict;
 import com.oracle.graal.python.builtins.objects.function.PArguments;
 import com.oracle.graal.python.builtins.objects.function.PBuiltinFunction;
 import com.oracle.graal.python.builtins.objects.function.PKeyword;
@@ -48,11 +50,13 @@ import com.oracle.graal.python.builtins.objects.module.PythonModule;
 import com.oracle.graal.python.builtins.objects.object.PythonObject;
 import com.oracle.graal.python.builtins.objects.type.PythonBuiltinClass;
 import com.oracle.graal.python.nodes.BuiltinNames;
+import com.oracle.graal.python.nodes.ModuleRootNode;
 import com.oracle.graal.python.nodes.NodeFactory;
 import com.oracle.graal.python.nodes.PNode;
 import com.oracle.graal.python.nodes.call.InvokeNode;
 import com.oracle.graal.python.nodes.control.TopLevelExceptionHandler;
 import com.oracle.graal.python.nodes.expression.ExpressionNode;
+import com.oracle.graal.python.nodes.frame.WriteGlobalNode;
 import com.oracle.graal.python.nodes.function.PythonBuiltinBaseNode;
 import com.oracle.graal.python.nodes.object.GetClassNode;
 import com.oracle.graal.python.parser.PythonParserImpl;
@@ -61,6 +65,7 @@ import com.oracle.graal.python.runtime.PythonCore;
 import com.oracle.graal.python.runtime.PythonOptions;
 import com.oracle.graal.python.runtime.PythonParser.ParserMode;
 import com.oracle.graal.python.runtime.exception.PException;
+import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.Assumption;
 import com.oracle.truffle.api.CallTarget;
 import com.oracle.truffle.api.CompilerAsserts;
@@ -82,6 +87,7 @@ import com.oracle.truffle.api.instrumentation.ProvidedTags;
 import com.oracle.truffle.api.instrumentation.StandardTags;
 import com.oracle.truffle.api.nodes.ExecutableNode;
 import com.oracle.truffle.api.nodes.Node;
+import com.oracle.truffle.api.nodes.NodeVisitor;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.api.source.Source.SourceBuilder;
@@ -344,17 +350,40 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
         for (Scope s : super.findLocalScopes(context, node, frame)) {
             scopes.add(s);
         }
+        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
         if (frame != null) {
-            PythonObject globals = PArguments.getGlobalsSafe(frame);
-            if (globals != null) {
-                scopes.add(Scope.newBuilder("globals()", globals).build());
-            }
             Frame generatorFrame = PArguments.getGeneratorFrameSafe(frame);
             if (generatorFrame != null) {
                 for (Scope s : super.findLocalScopes(context, node, generatorFrame)) {
                     scopes.add(s);
                 }
             }
+            PythonObject globals = PArguments.getGlobalsSafe(frame);
+            if (globals != null) {
+                if (globals instanceof PDict) {
+                    for (DictEntry dictEntry : ((PDict) globals).getDictStorage().entries()) {
+                        descriptor.addProperty(dictEntry.key.toString(), dictEntry.value);
+                    }
+                } else {
+                    for (String name : globals.getAttributeNames()) {
+                        descriptor.addProperty(name, globals.getAttribute(name));
+                    }
+                }
+                scopes.add(Scope.newBuilder("globals()", descriptor).build());
+            }
+        } else {
+            RootNode rootNode = node.getRootNode();
+            if (rootNode instanceof ModuleRootNode) {
+                rootNode.accept(new NodeVisitor() {
+                    public boolean visit(Node visitedNode) {
+                        if (visitedNode instanceof WriteGlobalNode) {
+                            descriptor.addProperty(((WriteGlobalNode) visitedNode).getAttributeId(), PNone.NO_VALUE);
+                        }
+                        return true;
+                    }
+                });
+            }
+            scopes.add(Scope.newBuilder(rootNode.getName(), descriptor).build());
         }
         return scopes;
     }
@@ -362,7 +391,6 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
     @Override
     protected Iterable<Scope> findTopScopes(PythonContext context) {
         ArrayList<Scope> scopes = new ArrayList<>();
-        scopes.add(Scope.newBuilder("__main__", context.getMainModule()).build());
         scopes.add(Scope.newBuilder("builtins", context.getBuiltins()).build());
         return scopes;
     }

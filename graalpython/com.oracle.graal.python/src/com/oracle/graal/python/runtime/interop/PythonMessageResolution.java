@@ -46,8 +46,6 @@ import static com.oracle.graal.python.nodes.SpecialMethodNames.__GETATTRIBUTE__;
 import static com.oracle.graal.python.nodes.SpecialMethodNames.__GETITEM__;
 import static com.oracle.graal.python.nodes.SpecialMethodNames.__SETITEM__;
 
-import java.util.Arrays;
-
 import com.oracle.graal.python.builtins.modules.BuiltinFunctions;
 import com.oracle.graal.python.builtins.modules.BuiltinFunctionsFactory;
 import com.oracle.graal.python.builtins.objects.PNone;
@@ -60,12 +58,10 @@ import com.oracle.graal.python.builtins.objects.function.PBuiltinFunction;
 import com.oracle.graal.python.builtins.objects.function.PFunction;
 import com.oracle.graal.python.builtins.objects.function.PKeyword;
 import com.oracle.graal.python.builtins.objects.function.PythonCallable;
-import com.oracle.graal.python.builtins.objects.list.PList;
 import com.oracle.graal.python.builtins.objects.method.PBuiltinMethod;
 import com.oracle.graal.python.builtins.objects.method.PMethod;
 import com.oracle.graal.python.builtins.objects.object.PythonBuiltinObject;
 import com.oracle.graal.python.builtins.objects.object.PythonObject;
-import com.oracle.graal.python.builtins.objects.str.PString;
 import com.oracle.graal.python.builtins.objects.type.PythonBuiltinClass;
 import com.oracle.graal.python.builtins.objects.type.PythonClass;
 import com.oracle.graal.python.nodes.SpecialMethodNames;
@@ -226,23 +222,7 @@ public class PythonMessageResolution {
                 return factory.createTuple(new Object[0]);
             }
             PythonObject object = (PythonObject) obj;
-            if (isMapping.execute(object)) {
-                Object[] attributeNames = object.getAttributeNames().toArray();
-                PList keys = castToList.executeWith(keysNode.executeObject(object));
-                Object[] keysArray = keys.getSequenceStorage().getCopyOfInternalArray();
-                Object[] retVal = Arrays.copyOf(attributeNames, keysArray.length + attributeNames.length);
-                for (int i = 0; i < keysArray.length; i++) {
-                    Object key = keysArray[i];
-                    if (key instanceof String || key instanceof PString) {
-                        retVal[i + attributeNames.length] = key.toString();
-                    } else {
-                        return factory.createTuple(attributeNames);
-                    }
-                }
-                return factory.createTuple(retVal);
-            } else {
-                return factory.createTuple(object.getAllAttributeNames().stream().distinct().toArray());
-            }
+            return factory.createTuple(object.getAllAttributeNames().stream().distinct().toArray());
         }
     }
 
