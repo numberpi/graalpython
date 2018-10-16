@@ -89,7 +89,7 @@ import com.oracle.truffle.api.source.SourceSection;
 
 @TruffleLanguage.Registration(id = PythonLanguage.ID, name = PythonLanguage.NAME, version = PythonLanguage.VERSION, mimeType = PythonLanguage.MIME_TYPE, interactive = true, internal = false, contextPolicy = TruffleLanguage.ContextPolicy.SHARED)
 @ProvidedTags({StandardTags.CallTag.class, StandardTags.StatementTag.class, StandardTags.RootTag.class, StandardTags.TryBlockTag.class, StandardTags.ExpressionTag.class,
-                StandardTags.DeclarationTag.class, DebuggerTags.AlwaysHalt.class})
+                StandardTags.DeclarationTag.class, StandardTags.WriteVariableTag.class, StandardTags.ReadVariableTag.class, DebuggerTags.AlwaysHalt.class})
 public final class PythonLanguage extends TruffleLanguage<PythonContext> {
     public static final String ID = "python";
     public static final String NAME = "Python";
