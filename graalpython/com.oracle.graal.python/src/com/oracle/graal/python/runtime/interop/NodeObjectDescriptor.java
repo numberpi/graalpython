@@ -43,6 +43,8 @@ package com.oracle.graal.python.runtime.interop;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.oracle.graal.python.builtins.objects.common.HashingStorage.DictEntry;
+import com.oracle.graal.python.builtins.objects.dict.PDict;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.interop.ForeignAccess;
 import com.oracle.truffle.api.interop.TruffleObject;
@@ -84,6 +86,15 @@ public class NodeObjectDescriptor implements TruffleObject {
     @TruffleBoundary
     public TruffleObject getPropertyNames() {
         return new NodeObjectDescriptorKeys(data);
+    }
+
+    @TruffleBoundary
+    public static NodeObjectDescriptor fromPDict(PDict dict) {
+        NodeObjectDescriptor nodeObjectDescriptor = new NodeObjectDescriptor();
+        for (DictEntry s : dict.getDictStorage().entries()) {
+            nodeObjectDescriptor.addProperty(s.getKey().toString(), s.getValue());
+        }
+        return nodeObjectDescriptor;
     }
 
     static boolean isInstance(TruffleObject object) {

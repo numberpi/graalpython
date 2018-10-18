@@ -39,7 +39,6 @@ import org.graalvm.options.OptionDescriptors;
 import com.oracle.graal.python.builtins.Python3Core;
 import com.oracle.graal.python.builtins.objects.PNone;
 import com.oracle.graal.python.builtins.objects.PythonAbstractObject;
-import com.oracle.graal.python.builtins.objects.common.HashingStorage.DictEntry;
 import com.oracle.graal.python.builtins.objects.dict.PDict;
 import com.oracle.graal.python.builtins.objects.function.PArguments;
 import com.oracle.graal.python.builtins.objects.function.PBuiltinFunction;
@@ -66,6 +65,7 @@ import com.oracle.graal.python.runtime.PythonOptions;
 import com.oracle.graal.python.runtime.PythonParser.ParserMode;
 import com.oracle.graal.python.runtime.exception.PException;
 import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
+import com.oracle.graal.python.runtime.object.PythonObjectFactory;
 import com.oracle.truffle.api.Assumption;
 import com.oracle.truffle.api.CallTarget;
 import com.oracle.truffle.api.CompilerAsserts;
@@ -347,24 +347,22 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
     @Override
     protected Iterable<Scope> findLocalScopes(PythonContext context, Node node, Frame frame) {
         ArrayList<Scope> scopes = new ArrayList<>();
-        for (Scope s : super.findLocalScopes(context, node, frame)) {
-            scopes.add(s);
-        }
-        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
+        PythonObjectFactory factory = context.getCore().factory();
         if (frame != null) {
+            PDict locals = factory.createDictLocals(frame, false);
+            scopes.add(Scope.newBuilder("locals", NodeObjectDescriptor.fromPDict(locals)).build());
             Frame generatorFrame = PArguments.getGeneratorFrameSafe(frame);
             if (generatorFrame != null) {
-                for (Scope s : super.findLocalScopes(context, node, generatorFrame)) {
-                    scopes.add(s);
-                }
+                PDict generatorLocals = factory.createDictLocals(generatorFrame, false);
+                scopes.add(Scope.newBuilder("locals", NodeObjectDescriptor.fromPDict(generatorLocals)).build());
             }
             PythonObject globals = PArguments.getGlobalsSafe(frame);
             if (globals != null) {
+                NodeObjectDescriptor descriptor;
                 if (globals instanceof PDict) {
-                    for (DictEntry dictEntry : ((PDict) globals).getDictStorage().entries()) {
-                        descriptor.addProperty(dictEntry.key.toString(), dictEntry.value);
-                    }
+                    descriptor = NodeObjectDescriptor.fromPDict((PDict) globals);
                 } else {
+                    descriptor = new NodeObjectDescriptor();
                     for (String name : globals.getAttributeNames()) {
                         descriptor.addProperty(name, globals.getAttribute(name));
                     }
@@ -373,7 +371,17 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
             }
         } else {
             RootNode rootNode = node.getRootNode();
+
+            NodeObjectDescriptor localsDesc = new NodeObjectDescriptor();
+            for (Object s : rootNode.getFrameDescriptor().getIdentifiers()) {
+                if (!s.toString().startsWith("<")) {
+                    localsDesc.addProperty(s.toString(), PNone.NO_VALUE);
+                }
+            }
+            scopes.add(Scope.newBuilder("locals (static)", localsDesc).node(rootNode).build());
+
             if (rootNode instanceof ModuleRootNode) {
+                NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
                 rootNode.accept(new NodeVisitor() {
                     public boolean visit(Node visitedNode) {
                         if (visitedNode instanceof WriteGlobalNode) {
@@ -382,8 +390,8 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
                         return true;
                     }
                 });
+                scopes.add(Scope.newBuilder(rootNode.getName() + " (static)", descriptor).node(rootNode).build());
             }
-            scopes.add(Scope.newBuilder(rootNode.getName(), descriptor).build());
         }
         return scopes;
     }
