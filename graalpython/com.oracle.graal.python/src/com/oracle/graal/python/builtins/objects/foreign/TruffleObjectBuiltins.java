@@ -70,8 +70,8 @@ import com.oracle.graal.python.builtins.objects.PNone;
 import com.oracle.graal.python.builtins.objects.PNotImplemented;
 import com.oracle.graal.python.builtins.objects.foreign.TruffleObjectBuiltinsFactory.MulNodeFactory;
 import com.oracle.graal.python.builtins.objects.function.PKeyword;
+import com.oracle.graal.python.builtins.objects.iterator.PForeignArrayIterator;
 import com.oracle.graal.python.builtins.objects.list.PList;
-import com.oracle.graal.python.builtins.objects.object.ObjectBuiltins;
 import com.oracle.graal.python.builtins.objects.object.ObjectBuiltinsFactory;
 import com.oracle.graal.python.nodes.PGuards;
 import com.oracle.graal.python.nodes.call.special.LookupAndCallBinaryNode;
@@ -79,6 +79,7 @@ import com.oracle.graal.python.nodes.call.special.LookupAndCallUnaryNode;
 import com.oracle.graal.python.nodes.expression.BinaryArithmetic;
 import com.oracle.graal.python.nodes.expression.BinaryComparisonNode;
 import com.oracle.graal.python.nodes.expression.CastToBooleanNode;
+import com.oracle.graal.python.nodes.expression.CastToListNode;
 import com.oracle.graal.python.nodes.function.PythonBuiltinBaseNode;
 import com.oracle.graal.python.nodes.function.PythonBuiltinNode;
 import com.oracle.graal.python.nodes.function.builtins.PythonBinaryBuiltinNode;
@@ -86,6 +87,7 @@ import com.oracle.graal.python.nodes.function.builtins.PythonTernaryBuiltinNode;
 import com.oracle.graal.python.nodes.function.builtins.PythonUnaryBuiltinNode;
 import com.oracle.graal.python.nodes.interop.PForeignToPTypeNode;
 import com.oracle.graal.python.nodes.interop.PTypeToForeignNode;
+import com.oracle.graal.python.runtime.exception.PException;
 import com.oracle.graal.python.runtime.exception.PythonErrorType;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.dsl.Cached;
@@ -136,7 +138,7 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
         }
 
         @Specialization(guards = {"!isNull(self)", "isBoxed(self)"})
-        Object doForeignBoxed(TruffleObject self) {
+        boolean doForeignBoxed(TruffleObject self) {
             try {
                 return getCastToBooleanNode().executeWith(unboxLeft(self));
             } catch (UnsupportedMessageException e) {
@@ -145,7 +147,7 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
         }
 
         @Specialization(guards = "isForeignArray(self)")
-        Object doForeignArray(TruffleObject self,
+        boolean doForeignArray(TruffleObject self,
                         @Cached("GET_SIZE.createNode()") Node sizeNode) {
             try {
                 return getCastToBooleanNode().executeWith(ForeignAccess.sendGetSize(sizeNode, self));
@@ -155,7 +157,7 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
         }
 
         @Specialization(guards = {"isForeignObject(self)", "!isBoxed(self)", "!isForeignArray(self)"})
-        Object doForeignObject(TruffleObject self) {
+        boolean doForeignObject(TruffleObject self) {
             return !isNull(self);
         }
 
@@ -778,7 +780,7 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
         }
 
         @Fallback
-        Object doGeneric(@SuppressWarnings("unused") Object o) {
+        PNone doGeneric(@SuppressWarnings("unused") Object o) {
             return PNone.NONE;
         }
 
@@ -818,6 +820,12 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
     @Builtin(name = __CALL__, minNumOfPositionalArgs = 1, takesVarArgs = true, takesVarKeywordArgs = true)
     @GenerateNodeFactory
     public abstract static class CallNode extends UnboxNode {
+        public final Object executeWithArgs(TruffleObject callee, Object[] arguments) {
+            return this.execute(callee, arguments, PKeyword.EMPTY_KEYWORDS);
+        }
+
+        public abstract Object execute(TruffleObject callee, Object[] arguments, PKeyword[] keywords);
+
         /**
          * A foreign function call specializes on the length of the passed arguments. Any
          * optimization based on the callee has to happen on the other side.
@@ -850,6 +858,10 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
         protected Object doGeneric(Object callee, @SuppressWarnings("unused") Object arguments, @SuppressWarnings("unused") Object keywords) {
             throw raise(PythonErrorType.TypeError, "invalid invocation of foreign callable %s()", callee);
         }
+
+        public static CallNode create() {
+            return TruffleObjectBuiltinsFactory.CallNodeFactory.create(null);
+        }
     }
 
     @Builtin(name = __GETITEM__, fixedNumOfPositionalArgs = 2)
@@ -867,13 +879,14 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
     @GenerateNodeFactory
     abstract static class SetattrNode extends UnboxNode {
         @Specialization(guards = "isForeignObject(object)")
-        protected Object doIt(TruffleObject object, Object key, Object value,
+        protected PNone doIt(TruffleObject object, Object key, Object value,
                         @Cached("WRITE.createNode()") Node writeNode) {
             try {
-                return ForeignAccess.sendWrite(writeNode, object, key, value);
+                ForeignAccess.sendWrite(writeNode, object, key, value);
             } catch (UnknownIdentifierException | UnsupportedMessageException | UnsupportedTypeException e) {
                 throw raise(PythonErrorType.AttributeError, "foreign object %s has no attribute %s", object, key);
             }
+            return PNone.NONE;
         }
     }
 
@@ -893,13 +906,14 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
     @GenerateNodeFactory
     abstract static class DelattrNode extends UnboxNode {
         @Specialization(guards = "isForeignObject(object)")
-        protected Object doIt(TruffleObject object, Object key,
+        protected PNone doIt(TruffleObject object, Object key,
                         @Cached("REMOVE.createNode()") Node delNode) {
             try {
-                return ForeignAccess.sendRemove(delNode, object, key);
+                ForeignAccess.sendRemove(delNode, object, key);
             } catch (UnknownIdentifierException | UnsupportedMessageException e) {
                 throw raise(PythonErrorType.AttributeError, "foreign object %s has no attribute %s", object, key);
             }
+            return PNone.NONE;
         }
     }
 
@@ -909,7 +923,7 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
         AccessForeignItemNodes.RemoveForeignItemNode delForeignItemNode = AccessForeignItemNodes.RemoveForeignItemNode.create();
 
         @Specialization
-        Object doit(TruffleObject object, Object key) {
+        PNone doit(TruffleObject object, Object key) {
             delForeignItemNode.execute(object, key);
             return PNone.NONE;
         }
@@ -953,30 +967,51 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
     @Builtin(name = __STR__, fixedNumOfPositionalArgs = 1)
     @GenerateNodeFactory
     abstract static class StrNode extends UnboxNode {
+        protected final String method = __STR__;
         @Child private LookupAndCallUnaryNode callStrNode;
-        @Child private ObjectBuiltins.StrNode objectStrNode;
+        @Child protected PythonUnaryBuiltinNode objectStrNode;
+        @Child private Node getSizeNode;
+        @Child private Node readNode;
 
-        @Specialization(guards = "isForeignObject(object)")
-        protected Object doIt(TruffleObject object) {
-            if (isBoxed(object)) {
-                try {
-                    return getCallStrNode().executeObject(unboxLeft(object));
-                } catch (UnsupportedMessageException e) {
-                    throw new IllegalStateException("The object '%s' claims to be boxed, but does not support the UNBOX message");
-                }
+        @Specialization(guards = {"isBoxed(object)"})
+        protected Object doBoxed(TruffleObject object) {
+            try {
+                return getCallStrNode().executeObject(unboxLeft(object));
+            } catch (UnsupportedMessageException e) {
+                throw new IllegalStateException("The object '%s' claims to be boxed, but does not support the UNBOX message");
             }
+        }
+
+        @Specialization(guards = {"isForeignArray(object)"})
+        protected Object doArray(TruffleObject object,
+                        @Cached("create()") CastToListNode asList,
+                        @Cached("GET_SIZE.createNode()") Node sizeNode) {
+            try {
+                Object size = ForeignAccess.sendGetSize(sizeNode, object);
+                if (size instanceof Integer) {
+                    PForeignArrayIterator iterable = factory().createForeignArrayIterator(object, (int) size);
+                    return getCallStrNode().executeObject(asList.executeWith(iterable));
+                }
+            } catch (PException | UnsupportedMessageException e) {
+                // fall through
+            }
+            return doIt(object);
+        }
+
+        @Fallback
+        protected Object doIt(Object object) {
             return getObjectStrNode().execute(object);
         }
 
         private LookupAndCallUnaryNode getCallStrNode() {
             if (callStrNode == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
-                callStrNode = insert(LookupAndCallUnaryNode.create(__STR__));
+                callStrNode = insert(LookupAndCallUnaryNode.create(method));
             }
             return callStrNode;
         }
 
-        private ObjectBuiltins.StrNode getObjectStrNode() {
+        protected PythonUnaryBuiltinNode getObjectStrNode() {
             if (objectStrNode == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
                 objectStrNode = insert(ObjectBuiltinsFactory.StrNodeFactory.create());
@@ -987,36 +1022,16 @@ public class TruffleObjectBuiltins extends PythonBuiltins {
 
     @Builtin(name = __REPR__, fixedNumOfPositionalArgs = 1)
     @GenerateNodeFactory
-    abstract static class ReprNode extends UnboxNode {
-        @Child private LookupAndCallUnaryNode callReprNode;
-        @Child private ObjectBuiltins.ReprNode objectReprNode;
+    abstract static class ReprNode extends StrNode {
+        protected final String method = __REPR__;
 
-        @Specialization(guards = "isForeignObject(object)")
-        protected Object doIt(TruffleObject object) {
-            if (isBoxed(object)) {
-                try {
-                    return getCallReprNode().executeObject(unboxLeft(object));
-                } catch (UnsupportedMessageException e) {
-                    throw new IllegalStateException("The object '%s' claims to be boxed, but does not support the UNBOX message");
-                }
-            }
-            return getObjectReprNode().execute(object);
-        }
-
-        private LookupAndCallUnaryNode getCallReprNode() {
-            if (callReprNode == null) {
+        @Override
+        protected PythonUnaryBuiltinNode getObjectStrNode() {
+            if (objectStrNode == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
-                callReprNode = insert(LookupAndCallUnaryNode.create(__REPR__));
+                objectStrNode = insert(ObjectBuiltinsFactory.ReprNodeFactory.create());
             }
-            return callReprNode;
-        }
-
-        private ObjectBuiltins.ReprNode getObjectReprNode() {
-            if (objectReprNode == null) {
-                CompilerDirectives.transferToInterpreterAndInvalidate();
-                objectReprNode = insert(ObjectBuiltinsFactory.ReprNodeFactory.create());
-            }
-            return objectReprNode;
+            return objectStrNode;
         }
     }
 }

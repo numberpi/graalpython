@@ -25,7 +25,7 @@
  */
 package com.oracle.graal.python.builtins.objects.str;
 
-import com.oracle.graal.python.builtins.objects.type.PythonClass;
+import com.oracle.graal.python.builtins.objects.type.LazyPythonClass;
 import com.oracle.graal.python.runtime.sequence.PImmutableSequence;
 import com.oracle.graal.python.runtime.sequence.storage.SequenceStorage;
 
@@ -33,7 +33,7 @@ public final class PString extends PImmutableSequence {
 
     private final CharSequence value;
 
-    public PString(PythonClass clazz, CharSequence value) {
+    public PString(LazyPythonClass clazz, CharSequence value) {
         super(clazz);
         this.value = value;
     }
@@ -71,5 +71,9 @@ public final class PString extends PImmutableSequence {
     @Override
     public boolean equals(Object obj) {
         return obj != null && obj.equals(value);
+    }
+
+    public boolean isNative() {
+        return getNativeWrapper() != null && getNativeWrapper().isNative();
     }
 }

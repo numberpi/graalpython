@@ -35,6 +35,19 @@ def partition(self, sep):
 str.partition = partition
 
 
+def expandtabs(self, tabsize=8):
+    """
+    S.expandtabs(tabsize=8) -> str
+
+    Return a copy of S where all tab characters are expanded using spaces.
+    If tabsize is not given, a tab size of 8 characters is assumed.
+    """
+    return self.replace("\t", " " * tabsize)
+
+
+str.expandtabs = expandtabs
+
+
 # Auto number state
 ANS_INIT = 1
 ANS_AUTO = 2
@@ -326,9 +339,9 @@ class TemplateFormatter(object):
         return iter(self.parser_list)
 
 
-def strformat(self, *args, **kwargs):
-    template = TemplateFormatter(self)
-    return template.build(args, kwargs)
+def strformat(___self, *___args, **___kwargs):
+    template = TemplateFormatter(___self)
+    return template.build(___args, ___kwargs)
 
 
 str.format = strformat
@@ -341,17 +354,29 @@ def __iter__(self):
 str.__iter__ = __iter__
 
 
-def strcount(self, sub, start=0, end=-1):
-    if len(self) == 0:
+def strcount(self, sub, start=None, end=None):
+    selfLeng = len(self)
+    subLeng = len(sub)
+    if start == None:
+        start = 0
+    if selfLeng == 0:
+        if subLeng == 0 and start <= 0:
+            return 1
         return 0
-    if end < 0:
-        end = (len(self) + end) % len(self)
-    cnt = 0
+    if end == None:
+        end = selfLeng
+    if subLeng == 0:
+        if start <= selfLeng:
+            return len(self[start:end]) + 1
+        return 0
+
     idx = self.find(sub, start, end)
     if idx < 0:
         return 0
-    while idx < end and idx >= 0:
-        start = idx + 1
+
+    cnt = 1
+    while idx < selfLeng and idx >= 0 and cnt < selfLeng:
+        start = idx + subLeng
         idx = self.find(sub, start, end)
         if idx >= 0:
             cnt += 1

@@ -37,18 +37,25 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-class classmethod(object):
-    method = None
+import unittest
+import pickle
 
-    def __init__(self, func):
-        self.__func__ = func
+class TestPickle(unittest.TestCase):
 
-    def __get__(self, obj, instance=None, owner=None):
-        if owner is None:
-            return classmethod.method(type(instance), obj.__func__)
-        else:
-            return classmethod.method(owner, obj.__func__)
+    def test_builtin(self):
+        self.pickle_unpickle(len)
+        import sys
+        self.pickle_unpickle(sys.getrecursionlimit)
 
+    def test_local(self):
+        self.pickle_unpickle("test")
+        myvar = 10
+        self.pickle_unpickle(myvar)
 
-classmethod.method = type(classmethod(None).__init__)
-classmethod.__get__ = __builtin__(classmethod.__get__)
+    def pickle_unpickle(self, obj):
+        b_obj = pickle.dumps(obj, protocol=0)
+        r_obj = pickle.loads(b_obj)
+        self.assertEqual(r_obj, obj)
+
+if __name__ == '__main__':
+    unittest.main()

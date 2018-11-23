@@ -1,5 +1,5 @@
 {
-  overlay: "934f7a99e60cbc8d0affd873805c057b576f3709",
+  overlay: "ffde557d62fff381069838b745c31b79c90e6e2a",
 
   // ======================================================================================================
   // 
@@ -70,7 +70,7 @@
       "git": ">=1.8.3",
       "mercurial": ">=3.2.4",
       "gcc": "==4.9.1",
-      "llvm": ">=4.0",
+      "llvm": "==4.0.1",
       "python": "==3.4.1",
       "libffi": ">=3.2.1",
       "bzip2": ">=1.0.6",
@@ -180,7 +180,7 @@
     dynamicImports:: "sulong,/compiler",
 
     setup +: [
-      ["mx", "sforceimport"],
+      ["mx", "sforceimports"],
       ["mx", "--dynamicimports", self.dynamicImports, "build"],
     ]
   },

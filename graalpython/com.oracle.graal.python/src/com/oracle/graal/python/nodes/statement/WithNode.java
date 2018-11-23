@@ -25,11 +25,15 @@
  */
 package com.oracle.graal.python.nodes.statement;
 
+import static com.oracle.graal.python.nodes.SpecialMethodNames.__ENTER__;
+import static com.oracle.graal.python.nodes.SpecialMethodNames.__EXIT__;
 import static com.oracle.graal.python.nodes.SpecialMethodNames.__GETATTRIBUTE__;
 import static com.oracle.graal.python.runtime.exception.PythonErrorType.TypeError;
 
 import com.oracle.graal.python.builtins.objects.PNone;
+import com.oracle.graal.python.builtins.objects.exception.PBaseException;
 import com.oracle.graal.python.builtins.objects.function.PKeyword;
+import com.oracle.graal.python.builtins.objects.type.PythonClass;
 import com.oracle.graal.python.nodes.PNode;
 import com.oracle.graal.python.nodes.argument.CreateArgumentsNode;
 import com.oracle.graal.python.nodes.call.CallDispatchNode;
@@ -38,14 +42,14 @@ import com.oracle.graal.python.nodes.datamodel.IsCallableNode;
 import com.oracle.graal.python.nodes.expression.CastToBooleanNode;
 import com.oracle.graal.python.nodes.expression.ExpressionNode;
 import com.oracle.graal.python.nodes.frame.WriteNode;
+import com.oracle.graal.python.nodes.object.GetClassNode;
 import com.oracle.graal.python.runtime.exception.PException;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.NodeChild;
-import com.oracle.truffle.api.dsl.NodeChildren;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.VirtualFrame;
 
-@NodeChildren({@NodeChild(value = "withContext", type = ExpressionNode.class)})
+@NodeChild(value = "withContext", type = ExpressionNode.class)
 public abstract class WithNode extends StatementNode {
 
     @Child private StatementNode body;
@@ -87,14 +91,15 @@ public abstract class WithNode extends StatementNode {
 
     @Specialization
     protected void runWith(VirtualFrame frame, Object withObject,
+                    @Cached("create()") GetClassNode getClassNode,
                     @Cached("create()") IsCallableNode isCallableNode,
                     @Cached("create()") IsCallableNode isExitCallableNode) {
 
         PException exceptionState = getContext().getCurrentException();
         boolean gotException = false;
         // CPython first looks up '__exit__
-        Object exitCallable = exitGetter.executeObject(withObject, "__exit__");
-        Object enterCallable = enterGetter.executeObject(withObject, "__enter__");
+        Object exitCallable = exitGetter.executeObject(withObject, __EXIT__);
+        Object enterCallable = enterGetter.executeObject(withObject, __ENTER__);
 
         if (isCallableNode.execute(enterCallable)) {
             applyValues(frame, enterDispatch.executeCall(frame, enterCallable, createArgs.execute(withObject), new PKeyword[0]));
@@ -106,7 +111,7 @@ public abstract class WithNode extends StatementNode {
             body.executeVoid(frame);
         } catch (PException exception) {
             gotException = true;
-            handleException(frame, withObject, exitCallable, exception, isExitCallableNode);
+            handleException(frame, withObject, exitCallable, exception, isExitCallableNode, getClassNode);
         } finally {
             if (!gotException) {
                 if (isExitCallableNode.execute(exitCallable)) {
@@ -119,14 +124,14 @@ public abstract class WithNode extends StatementNode {
         }
     }
 
-    private void handleException(VirtualFrame frame, Object withObject, Object exitCallable, PException e, IsCallableNode isExitCallableNode) {
+    private void handleException(VirtualFrame frame, Object withObject, Object exitCallable, PException e, IsCallableNode isExitCallableNode, GetClassNode getClassNode) {
         if (!isExitCallableNode.execute(exitCallable)) {
             throw raise(TypeError, "%p is not callable", exitCallable);
         }
 
         e.getExceptionObject().reifyException();
-        Object type = e.getType();
-        Object value = e.getExceptionObject();
+        PBaseException value = e.getExceptionObject();
+        PythonClass type = getClassNode.execute(value);
         Object trace = e.getExceptionObject().getTraceback(factory());
         Object returnValue = exitDispatch.executeCall(frame, exitCallable, createArgs.execute(withObject, type, value, trace), new PKeyword[0]);
         // If exit handler returns 'true', suppress

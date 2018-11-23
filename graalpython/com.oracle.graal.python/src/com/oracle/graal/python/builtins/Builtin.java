@@ -53,9 +53,15 @@ public @interface Builtin {
 
     boolean takesVarKeywordArgs() default false;
 
+    String[] parameterNames() default {};
+
     String[] keywordArguments() default {};
 
     boolean isPublic() default true;
+
+    boolean isClassmethod() default false;
+
+    boolean isStaticmethod() default false;
 
     /**
      * By default the caller frame bit is set on-demand, but for some builtins it might be useful to

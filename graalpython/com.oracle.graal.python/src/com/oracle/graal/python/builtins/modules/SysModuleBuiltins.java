@@ -45,6 +45,7 @@ import static com.oracle.graal.python.runtime.exception.PythonErrorType.ValueErr
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -58,6 +59,7 @@ import com.oracle.graal.python.builtins.objects.ints.PInt;
 import com.oracle.graal.python.builtins.objects.str.PString;
 import com.oracle.graal.python.nodes.function.PythonBuiltinBaseNode;
 import com.oracle.graal.python.nodes.function.PythonBuiltinNode;
+import com.oracle.graal.python.nodes.object.GetClassNode;
 import com.oracle.graal.python.runtime.PythonContext;
 import com.oracle.graal.python.runtime.PythonCore;
 import com.oracle.graal.python.runtime.PythonOptions;
@@ -68,6 +70,7 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.Truffle;
 import com.oracle.truffle.api.TruffleLanguage.ContextReference;
 import com.oracle.truffle.api.TruffleOptions;
+import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.GenerateNodeFactory;
 import com.oracle.truffle.api.dsl.NodeFactory;
 import com.oracle.truffle.api.dsl.Specialization;
@@ -102,25 +105,33 @@ public class SysModuleBuiltins extends PythonBuiltins {
         builtinConstants.put("byteorder", ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN ? "little" : "big");
         builtinConstants.put("copyright", LICENSE);
         builtinConstants.put("dont_write_bytecode", true);
-        if (TruffleOptions.AOT) {
+        if (TruffleOptions.AOT || !core.getContext().isExecutableAccessAllowed()) {
             // cannot set the path at this time since the binary is not yet known; will be patched
             // in the context
             builtinConstants.put("executable", PNone.NONE);
         } else {
             StringBuilder sb = new StringBuilder();
-            sb.append(System.getProperty("java.home")).append(PythonCore.FILE_SEPARATOR).append("bin").append(PythonCore.FILE_SEPARATOR).append("java ");
+            ArrayList<String> exec_list = new ArrayList<>();
+            sb.append(System.getProperty("java.home")).append(PythonCore.FILE_SEPARATOR).append("bin").append(PythonCore.FILE_SEPARATOR).append("java");
+            exec_list.add(sb.toString());
+            sb.append(' ');
             for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
                 if (arg.matches("-Xrunjdwp:transport=dt_socket,server=y,address=\\d+,suspend=y")) {
                     arg = arg.replace("suspend=y", "suspend=n");
                 }
                 sb.append(arg).append(' ');
+                exec_list.add(arg);
             }
             sb.append("-classpath ");
+            exec_list.add("-classpath");
             sb.append(System.getProperty("java.class.path")).append(' ');
+            exec_list.add(System.getProperty("java.class.path"));
             // we really don't care what the main class or its arguments were - this should
             // always help us launch Graal.Python
             sb.append("com.oracle.graal.python.shell.GraalPythonMain");
+            exec_list.add("com.oracle.graal.python.shell.GraalPythonMain");
             builtinConstants.put("executable", sb.toString());
+            builtinConstants.put("executable_list", core.factory().createList(exec_list.toArray()));
         }
         builtinConstants.put("modules", core.factory().createDict());
         builtinConstants.put("path", core.factory().createList());
@@ -136,15 +147,18 @@ public class SysModuleBuiltins extends PythonBuiltins {
                         true,  // dont_write_bytecode
                         false, // hash_randomization
                         false, // ignore_environment
-                        false, // inspect
-                        false, // interactive
+                        PythonOptions.getFlag(core.getContext(), PythonOptions.InspectFlag), // inspect
+                        PythonOptions.getFlag(core.getContext(), PythonOptions.InspectFlag), // interactive
                         false, // isolated
-                        false, // no_site
-                        false, // no_user_site
+                        PythonOptions.getFlag(core.getContext(), PythonOptions.NoSiteFlag), // no_site
+                        PythonOptions.getFlag(core.getContext(), PythonOptions.NoUserSiteFlag), // no_user_site
                         false, // optimize
-                        false, // quiet
-                        PythonOptions.getOption(core.getContext(), PythonOptions.VerboseFlag).booleanValue(), // verbose
+                        PythonOptions.getFlag(core.getContext(), PythonOptions.QuietFlag), // quiet
+                        PythonOptions.getFlag(core.getContext(), PythonOptions.VerboseFlag), // verbose
         }));
+        builtinConstants.put("graal_python_core_home", PythonOptions.getOption(core.getContext(), PythonOptions.CoreHome));
+        builtinConstants.put("graal_python_stdlib_home", PythonOptions.getOption(core.getContext(), PythonOptions.StdLibHome));
+        builtinConstants.put("graal_python_opaque_filesystem", PythonOptions.getOption(core.getContext(), PythonOptions.OpaqueFilesystem));
         // the default values taken from JPython
         builtinConstants.put("float_info", core.factory().createTuple(new Object[]{
                         Double.MAX_VALUE,       // DBL_MAX
@@ -187,7 +201,8 @@ public class SysModuleBuiltins extends PythonBuiltins {
     @GenerateNodeFactory
     public static abstract class ExcInfoNode extends PythonBuiltinNode {
         @Specialization
-        public Object run() {
+        public Object run(
+                        @Cached("create()") GetClassNode getClassNode) {
             PythonContext context = getContext();
             PException currentException = context.getCurrentException();
             if (currentException == null) {
@@ -195,7 +210,7 @@ public class SysModuleBuiltins extends PythonBuiltins {
             } else {
                 PBaseException exception = currentException.getExceptionObject();
                 exception.reifyException();
-                return factory().createTuple(new Object[]{currentException.getType(), exception, exception.getTraceback(factory())});
+                return factory().createTuple(new Object[]{getClassNode.execute(exception), exception, exception.getTraceback(factory())});
             }
         }
     }
@@ -216,7 +231,7 @@ public class SysModuleBuiltins extends PythonBuiltins {
          * behavior. (it only captures the frames if a CallTarget boundary is crossed)
          */
         private static final class GetStackTraceRootNode extends RootNode {
-            private ContextReference<PythonContext> contextRef;
+            private final ContextReference<PythonContext> contextRef;
 
             protected GetStackTraceRootNode(PythonLanguage language) {
                 super(language);
@@ -226,7 +241,7 @@ public class SysModuleBuiltins extends PythonBuiltins {
             @Override
             public Object execute(VirtualFrame frame) {
                 CompilerDirectives.transferToInterpreter();
-                throw contextRef.get().getCore().raise(ValueError);
+                throw contextRef.get().getCore().raise(ValueError, null);
             }
 
             @Override

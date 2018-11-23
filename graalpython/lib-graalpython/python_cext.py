@@ -215,13 +215,6 @@ def PyTruffle_Object_LEN(obj):
 
 ##################### BYTES
 
-def PyBytes_FromStringAndSize(string, size, encoding):
-    if string is not None and string is not Py_NoValue():
-        return bytes(string, encoding)
-    assert size >= 0;
-    return PyTruffle_Bytes_EmptyWithCapacity(size, native_null)
-
-
 def PyBytes_AsStringCheckEmbeddedNull(obj, encoding):
     if not PyBytes_Check(obj):
         raise TypeError('expected bytes, {!s} found'.format(type(obj)))
@@ -314,20 +307,9 @@ def PyList_Size(listObj):
 
 ##################### LONG
 
-@may_raise
-def PyLong_FromLongLong(n, signed):
-    if signed:
-        return int(n)
-    else:
-        return int(n & 0xffffffffffffffff)
-
-
 @may_raise(-1)
-def PyLong_AsPrimitive(n, signed, size, descr):
-    if isinstance(n, int):
-        return TrufflePInt_AsPrimitive(n, signed, size, descr)
-    else:
-        return TrufflePInt_AsPrimitive(int(n), signed, size, descr)
+def PyLong_AsPrimitive(n, signed, size):
+    return TrufflePInt_AsPrimitive(int(n), signed, size)
 
 
 def _PyLong_Sign(n):
@@ -337,6 +319,11 @@ def _PyLong_Sign(n):
         return -1
     else:
         return 1
+
+
+@may_raise
+def PyLong_FromDouble(d):
+    return int(d)
 
 
 @may_raise
@@ -352,11 +339,6 @@ def PyLong_FromString(string, base, negative):
 
 @may_raise
 def PyFloat_FromDouble(n):
-    return float(n)
-
-
-@may_raise
-def PyFloat_FromObject(n):
     return float(n)
 
 
@@ -486,11 +468,6 @@ def PyNumber_Index(v):
 
 
 @may_raise
-def PyNumber_Float(v):
-    return float(v)
-
-
-@may_raise
 def PyNumber_Long(v):
     return int(v)
 
@@ -523,20 +500,8 @@ def PySequence_Tuple(obj):
 
 
 @may_raise
-def PySequence_Fast(obj, msg):
-    if isinstance(obj, tuple) or isinstance(obj, list):
-        return obj
-    try:
-        return list(obj)
-    except TypeError:
-        raise TypeError(msg)
-
-
-def PySequence_Check(obj):
-    # dictionaries are explicitly excluded
-    if isinstance(obj, dict):
-        return False
-    return hasattr(obj, '__getitem__')
+def PySequence_List(obj):
+    return list(obj)
 
 
 @may_raise
@@ -544,7 +509,7 @@ def PySequence_GetItem(obj, key):
     if not hasattr(obj, '__getitem__'):
         raise TypeError("'%s' object does not support indexing)" % repr(obj))
     if len(obj) < 0:
-        return error_marker
+        return native_null
     return obj[key]
 
 
@@ -706,7 +671,9 @@ def METH_DIRECT(fun):
     return fun
 
 
-methodtype = classmethod.method
+class _C:
+    def _m(self): pass
+methodtype = type(_C()._m)
 
 
 class modulemethod(methodtype):
@@ -764,12 +731,12 @@ def AddMember(primary, name, memberType, offset, canSet, doc):
     member = property()
     getter = ReadMemberFunctions[memberType]
     def member_getter(self):
-        return to_java(getter(to_sulong(self), TrufflePInt_AsPrimitive(offset, 1, 8, "")))
+        return to_java(getter(to_sulong(self), TrufflePInt_AsPrimitive(offset, 1, 8)))
     member.getter(member_getter)
     if to_java(canSet):
         setter = WriteMemberFunctions[memberType]
         def member_setter(self, value):
-            setter(to_sulong(self), TrufflePInt_AsPrimitive(offset, 1, 8, ""), to_sulong(value))
+            setter(to_sulong(self), TrufflePInt_AsPrimitive(offset, 1, 8), to_sulong(value))
         member.setter(member_setter)
     member.__doc__ = doc
     object.__setattr__(pclass, name, member)
@@ -814,20 +781,8 @@ def PyObject_Repr(o):
     return repr(o)
 
 
-@may_raise(-1)
-def PyType_IsSubtype(a, b):
-    return 1 if issubclass(a, b) else 0
-
-
 def PyTuple_New(size):
     return (None,) * size
-
-
-@may_raise
-def PyTuple_GetItem(t, n):
-    if not isinstance(t, tuple):
-        __bad_internal_call(None, None, t)
-    return t[n]
 
 
 @may_raise(-1)
@@ -866,7 +821,10 @@ def PyObject_Call(callee, args, kwargs):
 
 
 def PyObject_CallMethod(rcvr, method, args):
-    return getattr(rcvr, method)(*args)
+    # TODO(fa) that seems to be a workaround
+    if type(args) is tuple:
+        return getattr(rcvr, method)(*args)
+    return getattr(rcvr, method)(args)
 
 
 @may_raise
@@ -1139,42 +1097,6 @@ def PyTruffle_GetBuiltin(name):
     return getattr(sys.modules["builtins"], name)
 
 
-def PyTruffle_Type(type_name):
-    import types
-    if type_name == "mappingproxy":
-        return types.MappingProxyType
-    elif type_name == "NotImplementedType":
-        return type(NotImplemented)
-    elif type_name == "module":
-        return types.ModuleType
-    elif type_name == "NoneType":
-        return type(None)
-    elif type_name == "PyCapsule":
-        return PyCapsule
-    elif type_name == "function":
-        return types.FunctionType
-    elif type_name == "method_descriptor" or type_name == "wrapper_descriptor":
-        return type(list.append)
-    elif type_name == "getset_descriptor":
-        return getset_descriptor
-    elif type_name == "member_descriptor":
-        return property
-    elif type_name == "builtin_function_or_method":
-        return types.BuiltinFunctionType
-    elif type_name == "ellipsis":
-        return type(...)
-    elif type_name == "method":
-        return types.MethodType
-    elif type_name == "code":
-        return types.CodeType
-    elif type_name == "traceback":
-        return types.TracebackType
-    elif type_name == "frame":
-        return types.FrameType
-    else:
-        return getattr(sys.modules["builtins"], type_name)
-
-
 def check_argtype(idx, obj, typ):
     if not isinstance(obj, typ):
         raise TypeError("argument %d must be '%s', not '%s'" % (idx, str(typ), str(type(obj))))
@@ -1297,3 +1219,8 @@ def PySlice_GetIndicesEx(start, stop, step, length):
 @may_raise
 def PySlice_New(start, stop, step):
     return slice(start, stop, step)
+
+
+@may_raise
+def PyMapping_Keys(obj):
+    return list(obj.keys())

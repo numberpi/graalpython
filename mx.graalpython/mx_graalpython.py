@@ -36,25 +36,26 @@ import mx_sdk
 import mx_subst
 import mx_urlrewrites
 from mx_gate import Task
-from mx_graalpython_bench_param import PATH_MESO
-from mx_graalpython_benchmark import PythonBenchmarkSuite
+from mx_graalpython_bench_param import PATH_MESO, BENCHMARKS
+from mx_graalpython_benchmark import PythonBenchmarkSuite, python_vm_registry, CPythonVm, PyPyVm, GraalPythonVm, \
+    CONFIGURATION_DEFAULT
 from mx_unittest import unittest
 
-_suite = mx.suite('graalpython')
-_mx_graal = mx.suite("compiler", fatalIfMissing=False)
-_sulong = mx.suite("sulong")
+SUITE = mx.suite('graalpython')
+SUITE_COMPILER = mx.suite("compiler", fatalIfMissing=False)
+SUITE_SULONG = mx.suite("sulong")
 
 
 def _get_core_home():
-    return os.path.join(_suite.dir, "graalpython", "lib-graalpython")
+    return os.path.join(SUITE.dir, "graalpython", "lib-graalpython")
 
 
 def _get_stdlib_home():
-    return os.path.join(_suite.dir, "graalpython", "lib-python", "3")
+    return os.path.join(SUITE.dir, "graalpython", "lib-python", "3")
 
 
 def _get_svm_binary():
-    return os.path.join(_suite.dir, "graalpython-svm")
+    return os.path.join(SUITE.dir, "graalpython-svm")
 
 
 def __get_svm_binary_from_graalvm():
@@ -63,104 +64,20 @@ def __get_svm_binary_from_graalvm():
 
 
 def _extract_graalpython_internal_options(args):
-    internal = []
     non_internal = []
     additional_dists = []
     for arg in args:
         # Class path extensions
         if arg.startswith('-add-dist='):
             additional_dists += [arg[10:]]
-
-        # Debug flags
-        elif arg == '-print-ast':
-            internal += ["-Dcom.oracle.graal.python.PrintAST=true"]  # false
-
-        elif arg == '-visualize-ast':
-            internal += ["-Dcom.oracle.graal.python.VisualizedAST=true"]  # false
-
-        elif arg.startswith('-print-ast='):
-            internal += ["-Dcom.oracle.graal.python.PrintASTFilter=" + arg.replace('-print-ast=')]  # null
-
-        elif arg == '-debug-trace':
-            internal += ["-Dcom.oracle.graal.python.TraceJythonRuntime=true"]  # false
-            internal += ["-Dcom.oracle.graal.python.TraceImports=true"]  # false
-            internal += ["-Dcom.oracle.graal.python.TraceSequenceStorageGeneralization=true"]  # false
-            internal += ["-Dcom.oracle.graal.python.TraceObjectLayoutCreation=true"]  # false
-            internal += ["-Dcom.oracle.graal.python.TraceNodesWithoutSourceSection=true"]  # false
-            internal += ["-Dcom.oracle.graal.python.TraceNodesUsingExistingProbe=true"]  # false
-
-        elif arg == '-debug-junit':
-            internal += ["-Dcom.oracle.graal.python.CatchGraalPythonExceptionForUnitTesting=true"]  # false
-
-        # Object storage allocation """
-        elif arg == '-instrument-storageAlloc':
-            internal += ["-Dcom.oracle.graal.python.InstrumentObjectStorageAllocation=true"]  # false
-
-        # Translation flags """
-        elif arg == '-print-function':
-            internal += ["-Dcom.oracle.graal.python.UsePrintFunction=true"]  # false
-
-        # Runtime flags
-        elif arg == '-no-sequence-unboxing':
-            internal += ["-Dcom.oracle.graal.python.disableUnboxSequenceStorage=true"]  # true
-            internal += ["-Dcom.oracle.graal.python.disableUnboxSequenceIteration=true"]  # true
-
-        elif arg == '-no-intrinsify-calls':
-            internal += ["-Dcom.oracle.graal.python.disableIntrinsifyBuiltinCalls=true"]  # true
-
-        elif arg == '-flexible-object-storage':
-            internal += ["-Dcom.oracle.graal.python.FlexibleObjectStorage=true"]  # false
-
-        elif arg == '-flexible-storage-evolution':
-            internal += ["-Dcom.oracle.graal.python.FlexibleObjectStorageEvolution=true"]  # false
-            internal += ["-Dcom.oracle.graal.python.FlexibleObjectStorage=true"]  # false
-
-        # Generators
-        elif arg == '-no-inline-generator':
-            internal += ["-Dcom.oracle.graal.python.disableInlineGeneratorCalls=true"]  # true
-        elif arg == '-no-optimize-genexp':
-            internal += ["-Dcom.oracle.graal.python.disableOptimizeGeneratorExpressions=true"]  # true
-        elif arg == '-no-generator-peeling':
-            internal += ["-Dcom.oracle.graal.python.disableInlineGeneratorCalls=true"]  # true
-            internal += ["-Dcom.oracle.graal.python.disableOptimizeGeneratorExpressions=true"]  # true
-
-        elif arg == '-trace-generator-peeling':
-            internal += ["-Dcom.oracle.graal.python.TraceGeneratorInlining=true"]  # false
-
-        # Other
-        elif arg == '-force-long':
-            internal += ["-Dcom.oracle.graal.python.forceLongType=true"]  # false
-
-        elif arg == '-debug-perf' and _mx_graal:
-            # internal += ['-Dgraal.InliningDepthError=500']
-            # internal += ['-Dgraal.EscapeAnalysisIterations=3']
-            # internal += ['-XX:JVMCINMethodSizeLimit=1000000']
-            # internal += ['-Xms10g', '-Xmx16g']
-            internal += ['-Dgraal.TraceTruffleCompilation=true']
-            internal += ['-Dgraal.Dump=']
-            # internal += ['-XX:CompileCommand=print,*OptimizedCallTarget.callRoot',
-            #            '-XX:CompileCommand=exclude,*OptimizedCallTarget.callRoot',
-            #            '-Dgraal.TruffleBackgroundCompilation=false']
-            # internal += ['-Dgraal.TruffleCompileImmediately=true']
-            internal += ['-Dgraal.TraceTrufflePerformanceWarnings=true']
-            internal += ['-Dgraal.TruffleCompilationExceptionsArePrinted=true']
-            # internal += ['-Dgraal.TruffleInliningMaxCallerSize=150']
-            # internal += ['-Dgraal.InliningDepthError=10']
-            # internal += ['-Dgraal.MaximumLoopExplosionCount=1000']
-            # internal += ['-Dgraal.TruffleCompilationThreshold=100000']
-
-        elif arg == '-compile-truffle-immediately' and _mx_graal:
-            internal += ['-Dgraal.TruffleCompileImmediately=true']
-            internal += ['-Dgraal.TruffleCompilationExceptionsAreThrown=true']
-
         else:
             non_internal += [arg]
 
-    return internal, non_internal, additional_dists
+    return non_internal, additional_dists
 
 
 def check_vm(vm_warning=True, must_be_jvmci=False):
-    if not _mx_graal:
+    if not SUITE_COMPILER:
         if must_be_jvmci:
             print '** Error ** : graal compiler was not found!'
             sys.exit(1)
@@ -170,7 +87,7 @@ def check_vm(vm_warning=True, must_be_jvmci=False):
 
 
 def get_jdk():
-    if _mx_graal:
+    if SUITE_COMPILER:
         tag = 'jvmci'
     else:
         tag = None
@@ -196,12 +113,12 @@ def do_run_python(args, extra_vm_args=None, env=None, jdk=None, **kwargs):
     dists = ['GRAALPYTHON']
 
     vm_args, graalpython_args = mx.extract_VM_args(args, useDoubleDash=True, defaultAllVMArgs=False)
-    internal_graalpython_args, graalpython_args, additional_dists = _extract_graalpython_internal_options(graalpython_args)
+    graalpython_args, additional_dists = _extract_graalpython_internal_options(graalpython_args)
     dists += additional_dists
     if '--python.WithJavaStacktrace' not in graalpython_args:
         graalpython_args.insert(0, '--python.WithJavaStacktrace')
 
-    if _sulong:
+    if SUITE_SULONG:
         dists.append('SULONG')
         if mx.suite("sulong-managed", fatalIfMissing=False):
             dists.append('SULONG_MANAGED')
@@ -217,14 +134,12 @@ def do_run_python(args, extra_vm_args=None, env=None, jdk=None, **kwargs):
             return os.environ.get("USER") == user
 
         if _is_user("tim", "MAGLEV_HOME") or _is_user("cbasca") or _is_user("fa"):
-            _suite.import_suite("tools", version=None, urlinfos=None, in_subdir=True)
+            SUITE.import_suite("tools", version=None, urlinfos=None, in_subdir=True)
             dists.append('CHROMEINSPECTOR')
-            if _sulong:
+            if SUITE_SULONG:
                 vm_args.append("-Dpolyglot.llvm.enableLVI=true")
 
     vm_args += mx.get_runtime_jvm_args(dists, jdk=jdk)
-
-    vm_args += internal_graalpython_args
 
     if not jdk:
         jdk = get_jdk()
@@ -254,7 +169,7 @@ def nativebuild(args):
 
 
 def nativeclean(args):
-    mx.run(['find', _suite.dir, '-name', '*.bc', '-delete'])
+    mx.run(['find', SUITE.dir, '-name', '*.bc', '-delete'])
 
 
 def python3_unittests(args):
@@ -265,6 +180,7 @@ def python3_unittests(args):
 # mx gate --tags pythontest
 # mx gate --tags fulltest
 
+AOT_INCOMPATIBLE_TESTS = ["test_interop.py"]
 
 class GraalPythonTags(object):
     junit = 'python-junit'
@@ -290,8 +206,8 @@ def python_gate(args):
 
 
 def find_jdt():
-    pardir = os.path.abspath(os.path.join(_suite.dir, ".."))
-    for f in [os.path.join(_suite.dir, f) for f in os.listdir(_suite.dir)] + [os.path.join(pardir, f) for f in os.listdir(pardir)]:
+    pardir = os.path.abspath(os.path.join(SUITE.dir, ".."))
+    for f in [os.path.join(SUITE.dir, f) for f in os.listdir(SUITE.dir)] + [os.path.join(pardir, f) for f in os.listdir(pardir)]:
         if os.path.basename(f).startswith("ecj-") and os.path.basename(f).endswith(".jar"):
             mx.log("Automatically choosing %s for JDT" % f)
             os.environ["JDT"] = f
@@ -299,8 +215,8 @@ def find_jdt():
 
 
 def find_eclipse():
-    pardir = os.path.abspath(os.path.join(_suite.dir, ".."))
-    for f in [os.path.join(_suite.dir, f) for f in os.listdir(_suite.dir)] + [os.path.join(pardir, f) for f in os.listdir(pardir)]:
+    pardir = os.path.abspath(os.path.join(SUITE.dir, ".."))
+    for f in [os.path.join(SUITE.dir, f) for f in os.listdir(SUITE.dir)] + [os.path.join(pardir, f) for f in os.listdir(pardir)]:
         if os.path.basename(f) == "eclipse" and os.path.isdir(f):
             mx.log("Automatically choosing %s for Eclipse" % f)
             eclipse_exe = os.path.join(f, "eclipse")
@@ -346,22 +262,24 @@ def gate_unittests(args=[], subdir=""):
         # TODO: re-enable when python3 is available on darwin
         mx.log("Running tests with CPython")
         mx.run(["python3"] + test_args, nonZeroIsFatal=True)
+    if platform.system() != 'Darwin' and not pre_args and not post_args and not subdir:
+        mx.log("Running cpyext tests with opaque FS")
+        test_args = [_graalpytest_driver, "-v", _test_project + "src/tests/cpyext/"]
+        mx.command_function("python")(["--python.CatchAllExceptions=true", "--python.OpaqueFilesystem"] + pre_args + test_args + post_args)
 
 
-def _python_svm_unittest(svm_image):
-    suite_dir = _suite.dir
-    llvm_home = mx_subst.path_substitutions.substitute('--native.Dllvm.home=<path:SULONG_LIBS>')
-
+def run_python_unittests(python_binary, args=[], aot_compatible=True, exclude=[]):
     # tests root directory
-    tests_folder = os.path.join(suite_dir, "graalpython", "com.oracle.graal.python.test", "src", "tests")
+    tests_folder = os.path.join(SUITE.dir, "graalpython", "com.oracle.graal.python.test", "src", "tests")
 
     # list of excluded tests
-    excluded = ["test_interop.py"]
+    if aot_compatible:
+        exclude += AOT_INCOMPATIBLE_TESTS
 
     def is_included(path):
         if path.endswith(".py"):
             basename = os.path.basename(path)
-            return basename.startswith("test_") and basename not in excluded
+            return basename.startswith("test_") and basename not in exclude
         return False
 
     # list all 1st-level tests and exclude the SVM-incompatible ones
@@ -378,13 +296,9 @@ def _python_svm_unittest(svm_image):
             except OSError:
                 pass
 
-    args = ["--python.CoreHome=%s" % os.path.join(suite_dir, "graalpython", "lib-graalpython"),
-            "--python.StdLibHome=%s" % os.path.join(suite_dir, "graalpython", "lib-python/3"),
-            llvm_home,
-            os.path.join(suite_dir, "graalpython", "com.oracle.graal.python.test", "src", "graalpytest.py"),
-            "-v"]
+    args += [os.path.join(SUITE.dir, "graalpython", "com.oracle.graal.python.test", "src", "graalpytest.py"), "-v"]
     args += testfiles
-    return mx.run([svm_image] + args, nonZeroIsFatal=True)
+    return mx.run([python_binary] + args, nonZeroIsFatal=True)
 
 
 def graalpython_gate_runner(args, tasks):
@@ -398,7 +312,12 @@ def graalpython_gate_runner(args, tasks):
 
     with Task('GraalPython C extension tests', tasks, tags=[GraalPythonTags.cpyext]) as task:
         if task:
+            # we deliberately added this to test the combination of Sulong and 'mx_unittest'
+            unittest(['--regex', re.escape('com.oracle.graal.python.test.module.MemoryviewTest'),
+                      "-Dgraal.TraceTruffleCompilation=true"])
+
             gate_unittests(subdir="cpyext/")
+
 
     with Task('GraalPython C extension managed tests', tasks, tags=[GraalPythonTags.cpyext_managed]) as task:
         if task:
@@ -412,18 +331,22 @@ def graalpython_gate_runner(args, tasks):
         if task:
             svm_image_name = "./graalpython-svm"
             if not os.path.exists(svm_image_name):
-                python_svm(["-h"])
-            else:
-                _python_svm_unittest(svm_image_name)
+                svm_image_name = python_svm(["-h"])
+            llvm_home = mx_subst.path_substitutions.substitute('--native.Dllvm.home=<path:SULONG_LIBS>')
+            args = ["--python.CoreHome=%s" % os.path.join(SUITE.dir, "graalpython", "lib-graalpython"),
+                    "--python.StdLibHome=%s" % os.path.join(SUITE.dir, "graalpython", "lib-python/3"),
+                    llvm_home]
+            run_python_unittests(svm_image_name, args)
 
     with Task('GraalPython apptests', tasks, tags=[GraalPythonTags.apptests]) as task:
         if task:
             apprepo = os.environ["GRAALPYTHON_APPTESTS_REPO_URL"]
-            _apptest_suite = _suite.import_suite(
+            _apptest_suite = SUITE.import_suite(
                 "graalpython-apptests",
-                version="f40fcf3af008d30a67e0dbc325a0d90f1e68f0c0",
+                version="1fc0e86a54cbe090d36f262c062d8f4eee8f2e6d",
                 urlinfos=[mx.SuiteImportURLInfo(mx_urlrewrites.rewriteurl(apprepo), "git", mx.vc_system("git"))]
             )
+            mx.log(" ".join(["Running", "mx"] + ["-p", _apptest_suite.dir, "graalpython-apptests"]))
             mx.run_mx(["-p", _apptest_suite.dir, "graalpython-apptests"])
 
     with Task('GraalPython license header update', tasks, tags=[GraalPythonTags.license]) as task:
@@ -449,9 +372,14 @@ def graalpython_gate_runner(args, tasks):
             ])
             if success not in out.data:
                 mx.abort('Output from generated SVM image "' + svm_image + '" did not match success pattern:\n' + success)
+            llvm_home = mx_subst.path_substitutions.substitute('--native.Dllvm.home=<path:SULONG_LIBS>')
+            args = ["--python.CoreHome=%s" % os.path.join(SUITE.dir, "graalpython", "lib-graalpython"),
+                    "--python.StdLibHome=%s" % os.path.join(SUITE.dir, "graalpython", "lib-python/3"),
+                    llvm_home]
+            run_python_unittests(svm_image, args)
 
 
-mx_gate.add_gate_runner(_suite, graalpython_gate_runner)
+mx_gate.add_gate_runner(SUITE, graalpython_gate_runner)
 
 
 def run_shared_lib_test(args=None):
@@ -578,14 +506,14 @@ def run_shared_lib_test(args=None):
 
         int32_t main(int32_t argc, char **argv) {
             poly_isolate_params isolate_params = {};
-            if (poly_create_isolate(&isolate_params, &global_isolate)) {
+            if (poly_create_isolate(&isolate_params, &global_isolate, &isolate_thread)) {
                 return 1;
             }
             return test_basic_python_function();
         }
         """)
         os.close(fd)
-        progname = os.path.join(_suite.dir, "graalpython-embedded-tool")
+        progname = os.path.join(SUITE.dir, "graalpython-embedded-tool")
         mx.log("".join(["Running ", "'clang", "-I%s" % svm_lib_path, "-L%s" % svm_lib_path, name, "-o", progname, "-lpolyglot"]))
         mx.run(["clang", "-I%s" % svm_lib_path, "-L%s" % svm_lib_path, name, "-o%s" % progname, "-lpolyglot"], nonZeroIsFatal=True)
         mx.log("Running " + progname + " with LD_LIBRARY_PATH " + svm_lib_path)
@@ -642,7 +570,7 @@ class ArchiveProject(mx.ArchivableProject):
 def deploy_binary_if_master(args):
     """if the active branch is 'master', deploy binaries for the primary suite to remote maven repository."""
     master_branch = 'master'
-    active_branch = mx.VC.get_vc(_suite.dir).active_branch(_suite.dir)
+    active_branch = mx.VC.get_vc(SUITE.dir).active_branch(SUITE.dir)
     if active_branch == master_branch:
         if sys.platform == "darwin":
             args.insert(0, "--platform-dependent")
@@ -676,8 +604,8 @@ def delete_self_if_testdownstream(args):
     """
     A helper for downstream testing with binary dependencies
     """
-    if str(_suite.dir).endswith("testdownstream/graalpython"):
-        shutil.rmtree(_suite.dir, ignore_errors=True)
+    if str(SUITE.dir).endswith("testdownstream/graalpython"):
+        shutil.rmtree(SUITE.dir, ignore_errors=True)
 
 
 def update_import(name, rev="origin/master", callback=None):
@@ -710,11 +638,11 @@ def update_import_cmd(args):
         if name == "sulong":
             join = os.path.join
             callback=lambda: shutil.copy(
-                join(_sulong.dir, "include", "truffle.h"),
-                join(_suite.dir, "graalpython", "com.oracle.graal.python.cext", "include", "truffle.h")
+                join(SUITE_SULONG.dir, "include", "truffle.h"),
+                join(SUITE.dir, "graalpython", "com.oracle.graal.python.cext", "include", "truffle.h")
             ) and shutil.copy(
                 join(mx.dependency("SULONG_LIBS").output, "polyglot.h"),
-                join(_suite.dir, "graalpython", "com.oracle.graal.python.cext", "include", "polyglot.h")
+                join(SUITE.dir, "graalpython", "com.oracle.graal.python.cext", "include", "polyglot.h")
             )
         # make sure that sulong and regex are the same version
         if name == "regex":
@@ -811,11 +739,11 @@ def import_python_sources(args):
         files = [line.split(",")[0] for line in f.read().split("\n") if len(line.split(",")) > 1 and line.split(",")[1] == "python.copyright"]
 
     # move to orphaned branch with sources
-    if _suite.vc.isDirty(_suite.dir):
+    if SUITE.vc.isDirty(SUITE.dir):
         mx.abort("Working dir must be clean")
-    tip = _suite.vc.tip(_suite.dir).strip()
-    _suite.vc.git_command(_suite.dir, ["checkout", "python-import"])
-    _suite.vc.git_command(_suite.dir, ["clean", "-fdx"])
+    tip = SUITE.vc.tip(SUITE.dir).strip()
+    SUITE.vc.git_command(SUITE.dir, ["checkout", "python-import"])
+    SUITE.vc.git_command(SUITE.dir, ["clean", "-fdx"])
     shutil.rmtree("graalpython")
 
     for inlined_file in files:
@@ -841,27 +769,18 @@ def import_python_sources(args):
             mx.warn("Could not update %s - original file not found" % inlined_file)
 
     # re-copy lib-python
-    libdir = os.path.join(_suite.dir, "graalpython/lib-python/3")
+    libdir = os.path.join(SUITE.dir, "graalpython/lib-python/3")
     shutil.copytree(os.path.join(pypy_sources, "lib-python", "3"), libdir)
 
     # commit and check back
-    _suite.vc.git_command(_suite.dir, ["add", "."])
+    SUITE.vc.git_command(SUITE.dir, ["add", "."])
     raw_input("Check that the updated files look as intended, then press RETURN...")
-    _suite.vc.commit(_suite.dir, "Update Python inlined files: %s" % import_version)
+    SUITE.vc.commit(SUITE.dir, "Update Python inlined files: %s" % import_version)
     answer = raw_input("Should we push python-import (y/N)? ")
     if answer and answer in "Yy":
-        _suite.vc.git_command(_suite.dir, ["push", "origin", "python-import:python-import"])
-    _suite.vc.update(_suite.dir, rev=tip)
-    _suite.vc.git_command(_suite.dir, ["merge", "python-import"])
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-#
-# add the defined python benchmark suites
-#
-# ----------------------------------------------------------------------------------------------------------------------
-for py_bench_suite in PythonBenchmarkSuite.get_benchmark_suites():
-    mx_benchmark.add_bm_suite(py_bench_suite)
+        SUITE.vc.git_command(SUITE.dir, ["push", "origin", "python-import:python-import"])
+    SUITE.vc.update(SUITE.dir, rev=tip)
+    SUITE.vc.git_command(SUITE.dir, ["merge", "python-import"])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -870,7 +789,7 @@ for py_bench_suite in PythonBenchmarkSuite.get_benchmark_suites():
 #
 # ----------------------------------------------------------------------------------------------------------------------
 mx_sdk.register_graalvm_component(mx_sdk.GraalVmLanguage(
-    suite=_suite,
+    suite=SUITE,
     name='Graal.Python',
     short_name='pyn',
     dir_name='python',
@@ -903,10 +822,33 @@ mx_sdk.register_graalvm_component(mx_sdk.GraalVmLanguage(
 #
 # ----------------------------------------------------------------------------------------------------------------------
 if not os.getenv("GRAAL_PYTHONHOME"):
-    home = os.path.join(_suite.dir, "graalpython")
+    home = os.path.join(SUITE.dir, "graalpython")
     if not os.path.exists(home):
-        home = [d for d in _suite.dists if d.name == "GRAALPYTHON_GRAALVM_SUPPORT"][0].output
+        home = [d for d in SUITE.dists if d.name == "GRAALPYTHON_GRAALVM_SUPPORT"][0].output
     os.environ["GRAAL_PYTHONHOME"] = home
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#
+# post init
+#
+# ----------------------------------------------------------------------------------------------------------------------
+
+def _register_vms(namespace):
+    python_vm_registry.add_vm(CPythonVm(CONFIGURATION_DEFAULT), SUITE)
+    python_vm_registry.add_vm(PyPyVm(CONFIGURATION_DEFAULT), SUITE)
+    python_vm_registry.add_vm(GraalPythonVm(config_name=CONFIGURATION_DEFAULT), SUITE, 10)
+
+
+def _register_bench_suites(namespace):
+    for py_bench_suite in PythonBenchmarkSuite.get_benchmark_suites(BENCHMARKS):
+        mx_benchmark.add_bm_suite(py_bench_suite)
+
+
+def mx_post_parse_cmd_line(namespace):
+    # all projects are now available at this time
+    _register_vms(namespace)
+    _register_bench_suites(namespace)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -914,7 +856,7 @@ if not os.getenv("GRAAL_PYTHONHOME"):
 # register the suite commands (if any)
 #
 # ----------------------------------------------------------------------------------------------------------------------
-mx.update_commands(_suite, {
+mx.update_commands(SUITE, {
     'python': [python, '[Python args|@VM options]'],
     'python3': [python, '[Python args|@VM options]'],
     'deploy-binary-if-master': [deploy_binary_if_master, ''],

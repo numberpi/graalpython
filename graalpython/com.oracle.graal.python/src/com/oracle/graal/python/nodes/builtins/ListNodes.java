@@ -40,8 +40,8 @@
  */
 package com.oracle.graal.python.nodes.builtins;
 
-import static com.oracle.graal.python.nodes.SpecialMethodNames.__INDEX__;
 import static com.oracle.graal.python.runtime.exception.PythonErrorType.TypeError;
+import static com.oracle.graal.python.nodes.SpecialMethodNames.__INDEX__;
 
 import java.lang.reflect.Array;
 import java.util.Arrays;
@@ -55,9 +55,9 @@ import com.oracle.graal.python.builtins.objects.list.PList;
 import com.oracle.graal.python.builtins.objects.slice.PSlice;
 import com.oracle.graal.python.builtins.objects.str.PString;
 import com.oracle.graal.python.builtins.objects.tuple.PTuple;
-import com.oracle.graal.python.builtins.objects.type.PythonClass;
-import com.oracle.graal.python.nodes.PNodeWithContext;
+import com.oracle.graal.python.builtins.objects.type.LazyPythonClass;
 import com.oracle.graal.python.nodes.PGuards;
+import com.oracle.graal.python.nodes.PNodeWithContext;
 import com.oracle.graal.python.nodes.SpecialMethodNames;
 import com.oracle.graal.python.nodes.builtins.ListNodesFactory.ConstructListNodeGen;
 import com.oracle.graal.python.nodes.builtins.ListNodesFactory.FastConstructListNodeGen;
@@ -65,6 +65,7 @@ import com.oracle.graal.python.nodes.builtins.ListNodesFactory.IndexNodeGen;
 import com.oracle.graal.python.nodes.call.special.LookupAndCallUnaryNode;
 import com.oracle.graal.python.nodes.control.GetIteratorNode;
 import com.oracle.graal.python.nodes.control.GetNextNode;
+import com.oracle.graal.python.nodes.object.IsBuiltinClassProfile;
 import com.oracle.graal.python.nodes.truffle.PythonArithmeticTypes;
 import com.oracle.graal.python.runtime.exception.PException;
 import com.oracle.graal.python.runtime.sequence.PSequence;
@@ -85,25 +86,24 @@ import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.dsl.TypeSystemReference;
 import com.oracle.truffle.api.nodes.UnexpectedResultException;
-import com.oracle.truffle.api.profiles.ConditionProfile;
 
 public abstract class ListNodes {
 
-    public final static class CreateListFromIteratorNode extends PNodeWithContext {
+    public final static class CreateStorageFromIteratorNode extends PNodeWithContext {
 
         private static final int START_SIZE = 2;
 
         @Child private GetNextNode next = GetNextNode.create();
 
-        private final ConditionProfile errorProfile = ConditionProfile.createBinaryProfile();
+        private final IsBuiltinClassProfile errorProfile = IsBuiltinClassProfile.create();
 
         @CompilationFinal private ListStorageType type = ListStorageType.Uninitialized;
 
-        public static CreateListFromIteratorNode create() {
-            return new CreateListFromIteratorNode();
+        public static CreateStorageFromIteratorNode create() {
+            return new CreateStorageFromIteratorNode();
         }
 
-        public PList execute(PythonClass cls, Object iterator) {
+        public SequenceStorage execute(Object iterator) {
             SequenceStorage storage;
             if (type == ListStorageType.Uninitialized) {
                 try {
@@ -117,7 +117,7 @@ public abstract class ListNodes {
                             }
                             elements[i++] = value;
                         } catch (PException e) {
-                            e.expectStopIteration(getCore(), errorProfile);
+                            e.expectStopIteration(errorProfile);
                             break;
                         }
                     }
@@ -152,10 +152,11 @@ public abstract class ListNodes {
                                     int value = next.executeInt(iterator);
                                     if (i >= elements.length) {
                                         elements = Arrays.copyOf(elements, elements.length * 2);
+                                        array = elements;
                                     }
                                     elements[i++] = value;
                                 } catch (PException e) {
-                                    e.expectStopIteration(getCore(), errorProfile);
+                                    e.expectStopIteration(errorProfile);
                                     break;
                                 }
                             }
@@ -170,10 +171,11 @@ public abstract class ListNodes {
                                     long value = next.executeLong(iterator);
                                     if (i >= elements.length) {
                                         elements = Arrays.copyOf(elements, elements.length * 2);
+                                        array = elements;
                                     }
                                     elements[i++] = value;
                                 } catch (PException e) {
-                                    e.expectStopIteration(getCore(), errorProfile);
+                                    e.expectStopIteration(errorProfile);
                                     break;
                                 }
                             }
@@ -188,10 +190,11 @@ public abstract class ListNodes {
                                     double value = next.executeDouble(iterator);
                                     if (i >= elements.length) {
                                         elements = Arrays.copyOf(elements, elements.length * 2);
+                                        array = elements;
                                     }
                                     elements[i++] = value;
                                 } catch (PException e) {
-                                    e.expectStopIteration(getCore(), errorProfile);
+                                    e.expectStopIteration(errorProfile);
                                     break;
                                 }
                             }
@@ -206,10 +209,11 @@ public abstract class ListNodes {
                                     PList value = PList.expect(next.execute(iterator));
                                     if (i >= elements.length) {
                                         elements = Arrays.copyOf(elements, elements.length * 2);
+                                        array = elements;
                                     }
                                     elements[i++] = value;
                                 } catch (PException e) {
-                                    e.expectStopIteration(getCore(), errorProfile);
+                                    e.expectStopIteration(errorProfile);
                                     break;
                                 }
                             }
@@ -224,10 +228,11 @@ public abstract class ListNodes {
                                     PTuple value = PTuple.expect(next.execute(iterator));
                                     if (i >= elements.length) {
                                         elements = Arrays.copyOf(elements, elements.length * 2);
+                                        array = elements;
                                     }
                                     elements[i++] = value;
                                 } catch (PException e) {
-                                    e.expectStopIteration(getCore(), errorProfile);
+                                    e.expectStopIteration(errorProfile);
                                     break;
                                 }
                             }
@@ -245,7 +250,7 @@ public abstract class ListNodes {
                                     }
                                     elements[i++] = value;
                                 } catch (PException e) {
-                                    e.expectStopIteration(getCore(), errorProfile);
+                                    e.expectStopIteration(errorProfile);
                                     break;
                                 }
                             }
@@ -259,7 +264,7 @@ public abstract class ListNodes {
                     storage = genericFallback(iterator, array, i, e.getResult());
                 }
             }
-            return factory().createList(cls, storage);
+            return storage;
         }
 
         private SequenceStorage genericFallback(Object iterator, Object array, int count, Object result) {
@@ -278,7 +283,7 @@ public abstract class ListNodes {
                     }
                     elements[i++] = value;
                 } catch (PException e) {
-                    e.expectStopIteration(getCore(), errorProfile);
+                    e.expectStopIteration(errorProfile);
                     break;
                 }
             }
@@ -291,19 +296,19 @@ public abstract class ListNodes {
 
         @Child private ListAppendNode appendNode;
 
-        public final PList execute(Object value, PythonClass valueClass) {
-            return execute(lookupClass(PythonBuiltinClassType.PList), value, valueClass);
+        public final PList execute(Object value) {
+            return execute(PythonBuiltinClassType.PList, value);
         }
 
-        public abstract PList execute(Object cls, Object value, PythonClass valueClass);
+        public abstract PList execute(LazyPythonClass cls, Object value);
 
         @Specialization
-        public PList listString(PythonClass cls, PString arg, PythonClass valueClass) {
-            return listString(cls, arg.getValue(), valueClass);
+        public PList listString(LazyPythonClass cls, PString arg) {
+            return listString(cls, arg.getValue());
         }
 
         @Specialization
-        public PList listString(PythonClass cls, String arg, @SuppressWarnings("unused") PythonClass valueClass) {
+        public PList listString(LazyPythonClass cls, String arg) {
             char[] chars = arg.toCharArray();
             PList list = factory().createList(cls);
 
@@ -315,21 +320,22 @@ public abstract class ListNodes {
         }
 
         @Specialization(guards = "isNoValue(none)")
-        public PList listIterable(PythonClass cls, @SuppressWarnings("unused") PNone none, @SuppressWarnings("unused") PythonClass valueClass) {
+        public PList listIterable(LazyPythonClass cls, @SuppressWarnings("unused") PNone none) {
             return factory().createList(cls);
         }
 
         @Specialization(guards = {"!isNoValue(iterable)", "!isString(iterable)"})
-        public PList listIterable(PythonClass cls, Object iterable, @SuppressWarnings("unused") PythonClass valueClass,
+        public PList listIterable(LazyPythonClass cls, Object iterable,
                         @Cached("create()") GetIteratorNode getIteratorNode,
-                        @Cached("create()") CreateListFromIteratorNode createListFromIteratorNode) {
+                        @Cached("create()") CreateStorageFromIteratorNode createStorageFromIteratorNode) {
 
             Object iterObj = getIteratorNode.executeWith(iterable);
-            return createListFromIteratorNode.execute(cls, iterObj);
+            SequenceStorage storage = createStorageFromIteratorNode.execute(iterObj);
+            return factory().createList(cls, storage);
         }
 
         @Fallback
-        public PList listObject(@SuppressWarnings("unused") Object cls, Object value, @SuppressWarnings("unused") PythonClass valueClass) {
+        public PList listObject(@SuppressWarnings("unused") LazyPythonClass cls, Object value) {
             CompilerDirectives.transferToInterpreter();
             throw new RuntimeException("list does not support iterable object " + value);
         }
@@ -352,24 +358,20 @@ public abstract class ListNodes {
 
         @Child private ConstructListNode constructListNode;
 
-        public final PSequence execute(Object value, PythonClass valueClass) {
-            return execute(lookupClass(PythonBuiltinClassType.PList), value, valueClass);
-        }
+        public abstract PSequence execute(Object value);
 
-        public abstract PSequence execute(Object cls, Object value, PythonClass valueClass);
-
-        @Specialization(guards = "cannotBeOverridden(valueClass)")
-        protected PSequence doPList(@SuppressWarnings("unused") Object cls, PSequence value, @SuppressWarnings("unused") PythonClass valueClass) {
+        @Specialization(guards = "cannotBeOverridden(value.getLazyPythonClass())")
+        protected PSequence doPList(PSequence value) {
             return value;
         }
 
         @Fallback
-        protected PSequence doGeneric(Object cls, Object value, PythonClass valueClass) {
+        protected PSequence doGeneric(Object value) {
             if (constructListNode == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
                 constructListNode = insert(ConstructListNode.create());
             }
-            return constructListNode.execute(cls, value, valueClass);
+            return constructListNode.execute(PythonBuiltinClassType.PList, value);
         }
 
         public static FastConstructListNode create() {

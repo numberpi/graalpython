@@ -53,8 +53,12 @@ import com.oracle.graal.python.builtins.objects.cext.PySequenceArrayWrapperMRFac
 import com.oracle.graal.python.builtins.objects.cext.PySequenceArrayWrapperMRFactory.ToNativeArrayNodeGen;
 import com.oracle.graal.python.builtins.objects.cext.PySequenceArrayWrapperMRFactory.ToNativeStorageNodeGen;
 import com.oracle.graal.python.builtins.objects.cext.PySequenceArrayWrapperMRFactory.WriteArrayItemNodeGen;
+import com.oracle.graal.python.builtins.objects.cext.PythonObjectNativeWrapperMR.InvalidateNativeObjectsAllManagedNode;
 import com.oracle.graal.python.builtins.objects.common.SequenceNodes;
+import com.oracle.graal.python.builtins.objects.common.SequenceNodes.GetSequenceStorageNode;
 import com.oracle.graal.python.builtins.objects.common.SequenceStorageNodes;
+import com.oracle.graal.python.builtins.objects.common.SequenceStorageNodes.ListGeneralizationNode;
+import com.oracle.graal.python.builtins.objects.common.SequenceStorageNodes.NormalizeIndexNode;
 import com.oracle.graal.python.builtins.objects.common.SequenceStorageNodes.StorageToNativeNode;
 import com.oracle.graal.python.builtins.objects.list.ListBuiltins;
 import com.oracle.graal.python.builtins.objects.list.ListBuiltinsFactory;
@@ -66,7 +70,6 @@ import com.oracle.graal.python.nodes.PNodeWithContext;
 import com.oracle.graal.python.nodes.SpecialMethodNames;
 import com.oracle.graal.python.nodes.call.special.LookupAndCallBinaryNode;
 import com.oracle.graal.python.nodes.call.special.LookupAndCallTernaryNode;
-import com.oracle.graal.python.nodes.call.special.LookupAndCallUnaryNode;
 import com.oracle.graal.python.nodes.truffle.PythonTypes;
 import com.oracle.graal.python.runtime.sequence.PSequence;
 import com.oracle.graal.python.runtime.sequence.storage.EmptySequenceStorage;
@@ -85,8 +88,9 @@ import com.oracle.truffle.api.interop.MessageResolution;
 import com.oracle.truffle.api.interop.Resolve;
 import com.oracle.truffle.api.interop.TruffleObject;
 import com.oracle.truffle.api.interop.UnsupportedMessageException;
+import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
-import com.oracle.truffle.api.nodes.UnexpectedResultException;
+import com.oracle.truffle.api.profiles.ConditionProfile;
 import com.oracle.truffle.api.profiles.ValueProfile;
 
 @MessageResolution(receiverType = PySequenceArrayWrapper.class)
@@ -234,36 +238,67 @@ public class PySequenceArrayWrapperMR {
     @TypeSystemReference(PythonTypes.class)
     abstract static class WriteArrayItemNode extends Node {
         @Child private CExtNodes.ToJavaNode toJavaNode;
+        @Child private LookupAndCallTernaryNode setItemNode;
+        @Child private SequenceNodes.GetSequenceStorageNode getSequenceStorageNode;
+        @Child private SequenceStorageNodes.SetItemNode setByteItemNode;
 
         public abstract Object execute(Object arrayObject, Object idx, Object value);
 
         @Specialization
-        Object doTuple(PBytes s, long idx, byte value,
-                        @Cached("createStorageSetItem()") SequenceStorageNodes.SetItemNode setItemNode) {
-            setItemNode.executeLong(s.getSequenceStorage(), idx, value);
+        Object doBytes(PIBytesLike s, long idx, byte value) {
+            getSetByteItemNode().executeLong(getSequenceStorage(s), idx, value);
             return value;
         }
 
         @Specialization
-        Object doTuple(PSequence s, long idx, Object value,
-                        @Cached("createStorageSetItem()") SequenceStorageNodes.SetItemNode setItemNode) {
-            setItemNode.execute(s.getSequenceStorage(), idx, getToJavaNode().execute(value));
+        @ExplodeLoop
+        Object doBytes(PIBytesLike s, long idx, int value) {
+            for (int offset = 0; offset < Integer.BYTES; offset++) {
+                getSetByteItemNode().executeLong(getSequenceStorage(s), idx + offset, (byte) (value >> (8 * offset)) & 0xFF);
+            }
             return value;
         }
 
         @Specialization
-        Object doGeneric(Object tuple, Object idx, Object value,
-                        @Cached("createSetItem()") LookupAndCallTernaryNode setItemNode) {
-            setItemNode.execute(tuple, idx, value);
+        @ExplodeLoop
+        Object doBytes(PIBytesLike s, long idx, long value) {
+            for (int offset = 0; offset < Long.BYTES; offset++) {
+                getSetByteItemNode().executeLong(getSequenceStorage(s), idx + offset, (byte) (value >> (8 * offset)) & 0xFF);
+            }
             return value;
         }
 
-        protected static SequenceStorageNodes.SetItemNode createStorageSetItem() {
+        @Specialization
+        Object doList(PList s, long idx, Object value,
+                        @Cached("createSetListItem()") SequenceStorageNodes.SetItemNode setListItemNode,
+                        @Cached("createBinaryProfile()") ConditionProfile updateStorageProfile) {
+            SequenceStorage storage = s.getSequenceStorage();
+            SequenceStorage updatedStorage = setListItemNode.executeLong(storage, idx, getToJavaNode().execute(value));
+            if (updateStorageProfile.profile(storage != updatedStorage)) {
+                s.setSequenceStorage(updatedStorage);
+            }
+            return value;
+        }
+
+        @Specialization
+        Object doTuple(PTuple s, long idx, Object value,
+                        @Cached("createSetItem()") SequenceStorageNodes.SetItemNode setListItemNode) {
+            setListItemNode.executeLong(s.getSequenceStorage(), idx, getToJavaNode().execute(value));
+            return value;
+        }
+
+        @Fallback
+        Object doGeneric(Object sequence, Object idx, Object value) {
+            setItemNode().execute(sequence, idx, getToJavaNode().execute(value));
+            return value;
+        }
+
+        protected static SequenceStorageNodes.SetItemNode createSetListItem() {
+            return SequenceStorageNodes.SetItemNode.create(NormalizeIndexNode.forArrayAssign(), () -> ListGeneralizationNode.create());
+        }
+
+        protected static SequenceStorageNodes.SetItemNode createSetItem() {
             return SequenceStorageNodes.SetItemNode.create("invalid item for assignment");
-        }
-
-        protected static LookupAndCallTernaryNode createSetItem() {
-            return LookupAndCallTernaryNode.create(__SETITEM__);
         }
 
         private CExtNodes.ToJavaNode getToJavaNode() {
@@ -274,6 +309,30 @@ public class PySequenceArrayWrapperMR {
             return toJavaNode;
         }
 
+        private SequenceStorage getSequenceStorage(PIBytesLike seq) {
+            if (getSequenceStorageNode == null) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                getSequenceStorageNode = insert(GetSequenceStorageNode.create());
+            }
+            return getSequenceStorageNode.execute(seq);
+        }
+
+        private SequenceStorageNodes.SetItemNode getSetByteItemNode() {
+            if (setByteItemNode == null) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                setByteItemNode = insert(createSetItem());
+            }
+            return setByteItemNode;
+        }
+
+        private LookupAndCallTernaryNode setItemNode() {
+            if (setItemNode == null) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                setItemNode = insert(LookupAndCallTernaryNode.create(__SETITEM__));
+            }
+            return setItemNode;
+        }
+
         public static WriteArrayItemNode create() {
             return WriteArrayItemNodeGen.create();
         }
@@ -282,8 +341,10 @@ public class PySequenceArrayWrapperMR {
     @Resolve(message = "TO_NATIVE")
     abstract static class ToNativeNode extends Node {
         @Child private ToNativeArrayNode toPyObjectNode = ToNativeArrayNode.create();
+        @Child private InvalidateNativeObjectsAllManagedNode invalidateNode = InvalidateNativeObjectsAllManagedNode.create();
 
         Object access(PySequenceArrayWrapper obj) {
+            invalidateNode.execute();
             if (!obj.isNative()) {
                 obj.setNativePointer(toPyObjectNode.execute(obj));
             }
@@ -351,8 +412,10 @@ public class PySequenceArrayWrapperMR {
 
     @Resolve(message = "IS_POINTER")
     abstract static class IsPointerNode extends Node {
+        @Child private CExtNodes.IsPointerNode pIsPointerNode = CExtNodes.IsPointerNode.create();
+
         boolean access(PySequenceArrayWrapper obj) {
-            return obj.isNative();
+            return pIsPointerNode.execute(obj);
         }
     }
 
@@ -382,82 +445,68 @@ public class PySequenceArrayWrapperMR {
     abstract static class GetTypeIDNode extends CExtBaseNode {
 
         @Child private PCallNativeNode callUnaryNode = PCallNativeNode.create();
-        @Child private SequenceNodes.LenNode lenNode;
 
-        @CompilationFinal TruffleObject funGetByteArrayTypeID;
-        @CompilationFinal TruffleObject funGetPtrArrayTypeID;
+        @CompilationFinal private TruffleObject funGetByteArrayTypeID;
+        @CompilationFinal private TruffleObject funGetPtrArrayTypeID;
 
         public abstract Object execute(Object delegate);
 
-        private Object callGetByteArrayTypeID(long len) {
+        protected Object callGetByteArrayTypeID() {
+            return callGetArrayTypeID(importCAPISymbol(NativeCAPISymbols.FUN_GET_BYTE_ARRAY_TYPE_ID));
+        }
+
+        protected Object callGetPtrArrayTypeID() {
+            return callGetArrayTypeID(importCAPISymbol(NativeCAPISymbols.FUN_GET_PTR_ARRAY_TYPE_ID));
+        }
+
+        private Object callGetByteArrayTypeIDCached() {
             if (funGetByteArrayTypeID == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
                 funGetByteArrayTypeID = importCAPISymbol(NativeCAPISymbols.FUN_GET_BYTE_ARRAY_TYPE_ID);
             }
-            return callUnaryNode.execute(funGetByteArrayTypeID, new Object[]{len});
+            return callGetArrayTypeID(funGetByteArrayTypeID);
         }
 
-        private Object callGetPtrArrayTypeID(long len) {
+        private Object callGetPtrArrayTypeIDCached() {
             if (funGetPtrArrayTypeID == null) {
                 CompilerDirectives.transferToInterpreterAndInvalidate();
                 funGetPtrArrayTypeID = importCAPISymbol(NativeCAPISymbols.FUN_GET_PTR_ARRAY_TYPE_ID);
             }
-            return callUnaryNode.execute(funGetPtrArrayTypeID, new Object[]{len});
+            return callGetArrayTypeID(funGetPtrArrayTypeID);
         }
 
-        @Specialization
-        Object doTuple(PTuple tuple) {
-            return callGetPtrArrayTypeID(getLength(tuple));
+        private Object callGetArrayTypeID(TruffleObject fun) {
+            // We use length=0 indicating an unknown length. This allows us to reuse the type but
+            // Sulong will report the wrong length via interop for a pointer to this object.
+            return callUnaryNode.execute(fun, new Object[]{0});
         }
 
-        @Specialization
-        Object doList(PList list) {
-            return callGetPtrArrayTypeID(getLength(list));
+        @Specialization(assumptions = "singleContextAssumption()", guards = "hasByteArrayContent(object)")
+        Object doByteArray(@SuppressWarnings("unused") PSequence object,
+                        @Cached("callGetByteArrayTypeID()") Object nativeType) {
+            // TODO(fa): use weak reference ?
+            return nativeType;
         }
 
-        @Specialization
-        Object doBytes(PBytes bytes) {
-            return callGetByteArrayTypeID(getLength(bytes));
+        @Specialization(guards = "hasByteArrayContent(object)", replaces = "doByteArray")
+        Object doByteArrayMultiCtx(@SuppressWarnings("unused") Object object) {
+            return callGetByteArrayTypeIDCached();
         }
 
-        @Specialization
-        Object doByteArray(PByteArray bytes) {
-            return callGetByteArrayTypeID(getLength(bytes));
+        @Specialization(assumptions = "singleContextAssumption()", guards = "!hasByteArrayContent(object)")
+        Object doPtrArray(@SuppressWarnings("unused") Object object,
+                        @Cached("callGetPtrArrayTypeID()") Object nativeType) {
+            // TODO(fa): use weak reference ?
+            return nativeType;
         }
 
-        @Specialization(guards = {"!isTuple(object)", "!isList(object)"})
-        Object doGeneric(Object object,
-                        @Cached("create(__LEN__)") LookupAndCallUnaryNode getLenNode) {
-            try {
-                return callGetPtrArrayTypeID(getLenNode.executeInt(object));
-            } catch (UnexpectedResultException e) {
-                // TODO do something useful
-                throw new AssertionError();
-            }
+        @Specialization(guards = "!hasByteArrayContent(object)", replaces = "doPtrArray")
+        Object doPtrArrayMultiCtx(@SuppressWarnings("unused") PSequence object) {
+            return callGetPtrArrayTypeIDCached();
         }
 
-        protected static ListBuiltins.GetItemNode createListGetItem() {
-            return ListBuiltinsFactory.GetItemNodeFactory.create();
-        }
-
-        protected static TupleBuiltins.GetItemNode createTupleGetItem() {
-            return TupleBuiltinsFactory.GetItemNodeFactory.create();
-        }
-
-        protected boolean isTuple(Object object) {
-            return object instanceof PTuple;
-        }
-
-        protected boolean isList(Object object) {
-            return object instanceof PList;
-        }
-
-        private int getLength(PSequence s) {
-            if (lenNode == null) {
-                CompilerDirectives.transferToInterpreterAndInvalidate();
-                lenNode = insert(SequenceNodes.LenNode.create());
-            }
-            return lenNode.execute(s);
+        protected static boolean hasByteArrayContent(Object object) {
+            return object instanceof PBytes || object instanceof PByteArray;
         }
 
         public static GetTypeIDNode create() {

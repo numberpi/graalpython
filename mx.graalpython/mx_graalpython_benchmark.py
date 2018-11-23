@@ -30,16 +30,16 @@ from abc import ABCMeta, abstractproperty, abstractmethod
 from os.path import join
 
 import mx
-import mx_subst
-from mx_benchmark import StdOutRule, VmRegistry, java_vm_registry, Vm, GuestVm, VmBenchmarkSuite, AveragingBenchmarkMixin
-from mx_graalpython_bench_param import BENCHMARKS, HARNESS_PATH
+import mx_benchmark
+from mx_benchmark import StdOutRule, java_vm_registry, Vm, GuestVm, VmBenchmarkSuite, AveragingBenchmarkMixin
+from mx_graalpython_bench_param import HARNESS_PATH
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
 # the graalpython suite
 #
 # ----------------------------------------------------------------------------------------------------------------------
-_graalpython_suite = mx.suite("graalpython")
+SUITE = mx.suite("graalpython")
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -47,7 +47,7 @@ _graalpython_suite = mx.suite("graalpython")
 #
 # ----------------------------------------------------------------------------------------------------------------------
 ENV_PYPY_HOME = "PYPY_HOME"
-VM_NAME_TRUFFLE_PYTHON = "graalpython"
+VM_NAME_GRAALPYTHON = "graalpython"
 VM_NAME_CPYTHON = "cpython"
 VM_NAME_PYPY = "pypy"
 GROUP_GRAAL = "Graal"
@@ -65,7 +65,8 @@ DEFAULT_ITERATIONS = 10
 # ----------------------------------------------------------------------------------------------------------------------
 def _check_vm_args(name, args):
     if len(args) < 2:
-        mx.abort("Expected at least 2 args (a single benchmark path in addition to the harness), got {} instead".format(args))
+        mx.abort("Expected at least 2 args (a single benchmark path in addition to the harness), "
+                 "got {} instead".format(args))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -115,37 +116,83 @@ class AbstractPythonVm(Vm):
 
     def run(self, cwd, args):
         _check_vm_args(self.name(), args)
-        stdout_capture = mx.OutputCapture()
+        out = mx.OutputCapture()
+        stdout_capture = mx.TeeOutputCapture(out)
         ret_code = mx.run([self.interpreter] + args, out=stdout_capture, err=stdout_capture)
-        print(stdout_capture.data)
-        return ret_code, stdout_capture.data
+        return ret_code, out.data
 
 
-class CPythonVm(AbstractPythonVm):
+class AbstractPythonIterationsControlVm(AbstractPythonVm):
+    __metaclass__ = ABCMeta
+
+    def __init__(self, config_name, options=None, iterations=None):
+        super(AbstractPythonIterationsControlVm, self).__init__(config_name, options)
+        try:
+            self._iterations = int(iterations)
+        except Exception:
+            self._iterations = None
+
+    def _override_iterations_args(self, args):
+        _args = []
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            _args.append(arg)
+            if arg == '-i':
+                _args.append(str(self._iterations))
+                i += 1
+            i += 1
+        return _args
+
+    def run(self, cwd, args):
+        if self._iterations is not None:
+            args = self._override_iterations_args(args)
+        return super(AbstractPythonIterationsControlVm, self).run(cwd, args)
+
+
+class CPythonVm(AbstractPythonIterationsControlVm):
+    PYTHON_INTERPRETER = "python3"
+
+    def __init__(self, config_name, options=None, virtualenv=None, iterations=None):
+        super(CPythonVm, self).__init__(config_name, options=options, iterations=iterations)
+        self._virtualenv = virtualenv
+
     @property
     def interpreter(self):
-        return "python3"
+        if self._virtualenv:
+            return os.path.join(self._virtualenv, CPythonVm.PYTHON_INTERPRETER)
+        return CPythonVm.PYTHON_INTERPRETER
 
     def name(self):
         return VM_NAME_CPYTHON
 
 
-class PyPyVm(AbstractPythonVm):
-    def __init__(self, config_name, options=None):
-        super(PyPyVm, self).__init__(config_name, options=options)
+class PyPyVm(AbstractPythonIterationsControlVm):
+    PYPY_INTERPRETER = "pypy3"
+
+    def __init__(self, config_name, options=None, iterations=None):
+        super(PyPyVm, self).__init__(config_name, options=options, iterations=iterations)
 
     @property
     def interpreter(self):
         home = mx.get_env(ENV_PYPY_HOME)
         if not home:
             mx.abort("{} is not set!".format(ENV_PYPY_HOME))
-        return join(home, 'bin', 'pypy3')
+        return join(home, 'bin', PyPyVm.PYPY_INTERPRETER)
 
     def name(self):
         return VM_NAME_PYPY
 
 
 class GraalPythonVm(GuestVm):
+    def __init__(self, config_name=CONFIGURATION_DEFAULT, distributions=None, cp_suffix=None, cp_prefix=None,
+                 host_vm=None):
+        super(GraalPythonVm, self).__init__(host_vm=host_vm)
+        self._config_name = config_name
+        self._distributions = distributions
+        self._cp_suffix = cp_suffix
+        self._cp_prefix = cp_prefix
+
     def hosting_registry(self):
         return java_vm_registry
 
@@ -157,24 +204,33 @@ class GraalPythonVm(GuestVm):
         ]
 
         dists = ["GRAALPYTHON", "GRAALPYTHON-LAUNCHER"]
+        # add configuration specified distributions
+        if self._distributions:
+            assert isinstance(self._distributions, list), "distributions must be either None or a list"
+            dists += self._distributions
+
         if mx.suite("sulong", fatalIfMissing=False):
             dists.append('SULONG')
             if mx.suite("sulong-managed", fatalIfMissing=False):
                 dists.append('SULONG_MANAGED')
 
-        vm_args = mx.get_runtime_jvm_args(dists) + [
-            "-Dpython.home=%s" % join(_graalpython_suite.dir, "graalpython"),
+        vm_args = mx.get_runtime_jvm_args(dists, cp_suffix=self._cp_suffix, cp_prefix=self._cp_prefix)
+        vm_args += [
+            "-Dpython.home=%s" % join(SUITE.dir, "graalpython"),
             "com.oracle.graal.python.shell.GraalPythonMain"
         ]
-
         cmd = truffle_options + vm_args + args
         return self.host_vm().run(cwd, cmd)
 
     def name(self):
-        return VM_NAME_TRUFFLE_PYTHON
+        return VM_NAME_GRAALPYTHON
 
     def config_name(self):
-        return CONFIGURATION_DEFAULT
+        return self._config_name
+
+    def with_host_vm(self, host_vm):
+        return self.__class__(config_name=self._config_name, distributions=self._distributions,
+                              cp_suffix=self._cp_suffix, cp_prefix=self._cp_prefix, host_vm=host_vm)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -182,16 +238,20 @@ class GraalPythonVm(GuestVm):
 # the benchmark definition
 #
 # ----------------------------------------------------------------------------------------------------------------------
+python_vm_registry = mx_benchmark.VmRegistry(PYTHON_VM_REGISTRY_NAME, known_host_registries=[java_vm_registry])
+
+
 class PythonBenchmarkSuite(VmBenchmarkSuite, AveragingBenchmarkMixin):
-    def __init__(self, name, harness_path):
+    def __init__(self, name, bench_path, benchmarks, python_path=None):
         self._name = name
-        self._harness_path = harness_path
-        self._harness_path = join(_graalpython_suite.dir, self._harness_path)
+        self._python_path = python_path
+        self._harness_path = HARNESS_PATH
+        self._harness_path = join(SUITE.dir, self._harness_path)
         if not self._harness_path:
             mx.abort("python harness path not specified!")
 
-        self._bench_path, self._benchmarks = BENCHMARKS[self._name]
-        self._bench_path = join(_graalpython_suite.dir, self._bench_path)
+        self._bench_path, self._benchmarks = bench_path, benchmarks
+        self._bench_path = join(SUITE.dir, self._bench_path)
 
     def rules(self, output, benchmarks, bm_suite_args):
         bench_name = os.path.basename(os.path.splitext(benchmarks[0])[0])
@@ -254,7 +314,22 @@ class PythonBenchmarkSuite(VmBenchmarkSuite, AveragingBenchmarkMixin):
 
         benchmark = benchmarks[0]
 
-        cmd_args = [self._harness_path, join(self._bench_path, "{}.py".format(benchmark))]
+        cmd_args = [self._harness_path]
+
+        # resolve the harness python path (for external python modules, that may be required by the benchmark)
+        if self._python_path:
+            assert isinstance(self._python_path, list), "python_path must be a list"
+            python_path = []
+            for pth in self._python_path:
+                if hasattr(pth, '__call__'):
+                    pth = pth()
+                assert isinstance(pth, (str, unicode))
+                python_path.append(pth)
+            cmd_args += ['-p', ",".join(python_path)]
+
+        # the benchmark
+        cmd_args += [join(self._bench_path, "{}.py".format(benchmark))]
+
         if len(run_args) == 0:
             run_args = self._benchmarks[benchmark]
         run_args = self.postprocess_run_args(run_args)
@@ -276,7 +351,8 @@ class PythonBenchmarkSuite(VmBenchmarkSuite, AveragingBenchmarkMixin):
 
     def failurePatterns(self):
         return [
-            re.compile(r"Exception")
+            # lookahead pattern for when truffle compilation details are enabled in the log
+            re.compile(r"^(?!(\[truffle\])).*Exception")
         ]
 
     def group(self):
@@ -292,16 +368,7 @@ class PythonBenchmarkSuite(VmBenchmarkSuite, AveragingBenchmarkMixin):
         return python_vm_registry
 
     @classmethod
-    def get_benchmark_suites(cls):
-        return [cls(suite_name, HARNESS_PATH) for suite_name in BENCHMARKS]
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-#
-# register locally VMs
-#
-# ----------------------------------------------------------------------------------------------------------------------
-python_vm_registry = VmRegistry(PYTHON_VM_REGISTRY_NAME, known_host_registries=[java_vm_registry])
-python_vm_registry.add_vm(CPythonVm(CONFIGURATION_DEFAULT), _graalpython_suite)
-python_vm_registry.add_vm(PyPyVm(CONFIGURATION_DEFAULT), _graalpython_suite)
-python_vm_registry.add_vm(GraalPythonVm(), _graalpython_suite, 10)
+    def get_benchmark_suites(cls, benchmarks):
+        assert isinstance(benchmarks, dict), "benchmarks must be a dict: {suite: [path, {bench: args, ... }], ...}"
+        return [cls(suite_name, suite_info[0], suite_info[1])
+                for suite_name, suite_info in benchmarks.items()]

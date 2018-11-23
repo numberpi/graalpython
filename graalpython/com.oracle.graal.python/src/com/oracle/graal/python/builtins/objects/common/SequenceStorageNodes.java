@@ -89,6 +89,8 @@ import com.oracle.graal.python.builtins.objects.slice.PSlice;
 import com.oracle.graal.python.builtins.objects.slice.PSlice.SliceInfo;
 import com.oracle.graal.python.builtins.objects.str.PString;
 import com.oracle.graal.python.builtins.objects.tuple.PTuple;
+import com.oracle.graal.python.builtins.objects.type.LazyPythonClass;
+import com.oracle.graal.python.nodes.PGuards;
 import com.oracle.graal.python.nodes.PNodeWithContext;
 import com.oracle.graal.python.nodes.SpecialMethodNames;
 import com.oracle.graal.python.nodes.builtins.ListNodes;
@@ -97,6 +99,8 @@ import com.oracle.graal.python.nodes.control.GetNextNode;
 import com.oracle.graal.python.nodes.datamodel.IsIndexNode;
 import com.oracle.graal.python.nodes.expression.BinaryComparisonNode;
 import com.oracle.graal.python.nodes.expression.CastToBooleanNode;
+import com.oracle.graal.python.nodes.object.GetLazyClassNode;
+import com.oracle.graal.python.nodes.object.IsBuiltinClassProfile;
 import com.oracle.graal.python.nodes.util.CastToIndexNode;
 import com.oracle.graal.python.runtime.exception.PException;
 import com.oracle.graal.python.runtime.exception.PythonErrorType;
@@ -829,7 +833,7 @@ public abstract class SequenceStorageNodes {
             storage.setIntItemNormalized(idx, value);
         }
 
-        @Specialization
+        @Specialization(guards = "!value.isNative()")
         protected void doInt(IntSequenceStorage storage, int idx, PInt value) {
             try {
                 storage.setIntItemNormalized(idx, value.intValueExact());
@@ -844,6 +848,11 @@ public abstract class SequenceStorageNodes {
         }
 
         @Specialization
+        protected void doLong(LongSequenceStorage storage, int idx, int value) {
+            storage.setLongItemNormalized(idx, value);
+        }
+
+        @Specialization(guards = "!value.isNative()")
         protected void doLong(LongSequenceStorage storage, int idx, PInt value) {
             try {
                 storage.setLongItemNormalized(idx, value.longValueExact());
@@ -948,7 +957,7 @@ public abstract class SequenceStorageNodes {
         void doGeneric(SequenceStorage s, SliceInfo info, Object iterable,
                         @Cached("create()") SetStorageSliceNode setStorageSliceNode,
                         @Cached("create()") ListNodes.ConstructListNode constructListNode) {
-            PList list = constructListNode.execute(iterable, null);
+            PList list = constructListNode.execute(iterable);
             setStorageSliceNode.execute(s, info, list.getSequenceStorage());
         }
 
@@ -2003,6 +2012,7 @@ public abstract class SequenceStorageNodes {
                 return createEmptyNode.execute(r, len);
             }
             SequenceStorage empty = createEmptyNode.execute(l, len);
+            empty.ensureCapacity(len);
             empty.setNewLength(len);
             return empty;
         }
@@ -2037,6 +2047,7 @@ public abstract class SequenceStorageNodes {
         }
     }
 
+    @ImportStatic(PGuards.class)
     public abstract static class ExtendNode extends SequenceStorageBaseNode {
         @Child private CreateEmptyNode createEmptyNode = CreateEmptyNode.create();
         @Child private GeneralizationNode genNode;
@@ -2049,7 +2060,17 @@ public abstract class SequenceStorageNodes {
 
         public abstract SequenceStorage execute(SequenceStorage s, Object iterable);
 
-        @Specialization(guards = "hasStorage(seq)")
+        @Child private GetLazyClassNode getClassNode;
+
+        protected LazyPythonClass getClass(Object value) {
+            if (getClassNode == null) {
+                CompilerDirectives.transferToInterpreterAndInvalidate();
+                getClassNode = insert(GetLazyClassNode.create());
+            }
+            return getClassNode.execute(value);
+        }
+
+        @Specialization(guards = {"hasStorage(seq)", "cannotBeOverridden(getClass(seq))"})
         SequenceStorage doWithStorage(SequenceStorage s, PSequence seq,
                         @Cached("createClassProfile()") ValueProfile leftProfile,
                         @Cached("createClassProfile()") ValueProfile rightProfile,
@@ -2074,11 +2095,11 @@ public abstract class SequenceStorageNodes {
             }
         }
 
-        @Specialization(guards = "!hasStorage(iterable)")
+        @Specialization(guards = "!hasStorage(iterable) || !cannotBeOverridden(getClass(iterable))")
         SequenceStorage doWithoutStorage(SequenceStorage s, Object iterable,
                         @Cached("create()") GetIteratorNode getIteratorNode,
                         @Cached("create()") GetNextNode getNextNode,
-                        @Cached("createBinaryProfile()") ConditionProfile errorProfile,
+                        @Cached("create()") IsBuiltinClassProfile errorProfile,
                         @Cached("createAppend()") AppendNode appendNode) {
             SequenceStorage currentStore = s;
             Object it = getIteratorNode.executeWith(iterable);
@@ -2088,7 +2109,7 @@ public abstract class SequenceStorageNodes {
                     value = getNextNode.execute(it);
                     currentStore = appendNode.execute(currentStore, value);
                 } catch (PException e) {
-                    e.expectStopIteration(getCore(), errorProfile);
+                    e.expectStopIteration(errorProfile);
                     return currentStore;
                 }
             }
@@ -2407,8 +2428,8 @@ public abstract class SequenceStorageNodes {
         }
 
         @Specialization
-        ListSequenceStorage doEmptyPList(@SuppressWarnings("unused") EmptySequenceStorage s, PList val) {
-            return new ListSequenceStorage(val.getSequenceStorage());
+        ListSequenceStorage doEmptyPList(@SuppressWarnings("unused") EmptySequenceStorage s, @SuppressWarnings("unused") PList val) {
+            return new ListSequenceStorage(0);
         }
 
         @Specialization
@@ -2603,9 +2624,9 @@ public abstract class SequenceStorageNodes {
         }
 
         @Specialization(guards = "isList(s)")
-        ListSequenceStorage doList(@SuppressWarnings("unused") SequenceStorage s, @SuppressWarnings("unused") int cap) {
+        ListSequenceStorage doList(@SuppressWarnings("unused") SequenceStorage s, int cap) {
             // TODO not quite accurate in case of native sequence storage
-            return new ListSequenceStorage(s);
+            return new ListSequenceStorage(cap);
         }
 
         @Specialization(guards = "isTuple(s)")

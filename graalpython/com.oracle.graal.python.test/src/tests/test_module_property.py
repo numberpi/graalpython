@@ -37,12 +37,32 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-class staticmethod(object):
-    def __init__(self, func):
-        self.__func__ = func
 
-    def __get__(self, instance, owner=None):
-        return self.__func__
+def test_builtins():
+    import array
+    assert array.array.__module__ == "array" # builtin class
+    assert int.__module__ == "builtins" # builtin class
+    import sys
+    assert sys.getrecursionlimit.__module__ == "sys" # builtin module method
 
-    def __call__(self, *args, **kwargs):
-        return self.__func__(*args, **kwargs)
+def test_imported():
+    import code
+    assert code.InteractiveInterpreter.__module__ == "code" # class
+    assert code.InteractiveInterpreter.runsource.__module__ == "code" # function
+    assert code.InteractiveInterpreter().runsource.__module__ == "code" # method
+
+class TestClass():
+    def foo(self):
+        pass
+
+def test_user_class():
+    assert TestClass.__module__ == __name__
+    assert TestClass().__module__ == __name__
+    assert TestClass.foo.__module__ == __name__
+    assert TestClass().foo.__module__ == __name__
+    # test redefine:
+    TestClass.__module__ = "bar"
+    assert TestClass.__module__ == "bar"
+    t = TestClass()
+    t.__module__ = "baz"
+    assert t.__module__ == "baz"

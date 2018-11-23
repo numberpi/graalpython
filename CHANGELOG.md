@@ -3,6 +3,38 @@
 This changelog summarizes major changes between GraalVM versions of the Python
 language runtime. The main focus is on user-observable behavior of the engine.
 
+## Version 1.0.0 RC10
+
+* Improve performance of C API upcalls
+* Improve performance of classmethods, staticmethods, `globals()`, and `locals()`
+* Improve performance of various string and bytes operations
+* Initial support for the `_thread` builtin module (actual multi-threading is still disabled, the API defaults to a dummy implementation)
+* Implement the `zipimporter` module
+* Support assignment to `object.__class__`
+* Use the new Truffle filesystem API to get/set the current working directory
+* Attempt our best to report side-effects in KEY_INFO
+* The KEYS message now responds with attributes and methods, never dict keys
+* Support the `input` builtin
+* Add DEBUG launcher options for performance debugging
+* Ensure context isolation for file descriptors and child PIDs
+* Fix passing custom locals and globals through `exec` and `eval`
+* Fixes to builtin `help`
+
+## Version 1.0.0 RC9
+
+* Support `help` in the builtin Python shell
+* Add `readline` to enable history and autocompletion in the Python shell
+* Add support for the -q, -E, -s, and -S Python launcher flags
+* Improve display of foreign array-like objects
+* Improve support for string and bytes regular expressions using our TRegex engine
+* Support loading site-packages installed with easy_install
+* Initial support for the `binascii` module
+
+## Version 1.0.0 RC8
+
+* Report allocations when the `--memtracer` option is used
+* Initial support for `pickle` module
+
 ## Version 1.0.0 RC7
 
 * Enhance the `java` interop builtin module with introspection utility methods

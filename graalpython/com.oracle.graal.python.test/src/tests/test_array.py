@@ -61,6 +61,14 @@ def test_create():
     a = array('b', b'x' * 10)
     assert str(a) == "array('b', [120, 120, 120, 120, 120, 120, 120, 120, 120, 120])"
 
+def test_wrong_create():
+    from array import array
+    raised = False
+    try :
+        a = array([1,2,3])
+    except TypeError:
+        raised = True
+    assert raised
 
 def test_add():
     from array import array
@@ -77,3 +85,14 @@ def test_add():
     else:
         assert False
 
+
+def test_add_int_to_long_storage():
+    x = [2147483648, 1]
+    x[0] = 42 # should not raise
+    assert x[0] == 42
+
+def test_add_int_to_long_array():
+    from array import array
+    y = array('l', [1, 2])
+    y[0] = 42 # should not raise
+    assert y[0] == 42

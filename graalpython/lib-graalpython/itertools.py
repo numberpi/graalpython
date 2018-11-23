@@ -22,11 +22,48 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 class repeat():
-    pass
+    def __init__(self, obj, times=None):
+        self.obj = obj
+        self.times = times
+        self.step = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.times is not None:
+            if self.step >= self.times:
+                raise StopIteration
+            else:
+                self.step += 1
+        return self.obj
 
 
 class chain():
-    pass
+    """
+    Return a chain object whose .__next__() method returns elements from the
+    first iterable until it is exhausted, then elements from the next
+    iterable, until all of the iterables are exhausted.
+    """
+    def __init__(self, *iterables):
+        self._iterables = iterables
+        self._len = len(iterables)
+        if self._len > 0:
+            self._current = iter(self._iterables[0])
+        self._idx = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._idx >= self._len:
+            raise StopIteration
+        try:
+            return next(self._current)
+        except (StopIteration, IndexError):
+            self._idx += 1
+            self._current = iter(self._iterables[self._idx])
+            return self.__next__()
 
 
 class starmap():
@@ -332,3 +369,121 @@ class accumulate(object):
         else:
             self.total = self.func(total, value)
         return self.total
+
+
+class dropwhile(object):
+    """
+    dropwhile(predicate, iterable) --> dropwhile object
+
+    Drop items from the iterable while predicate(item) is true.
+    Afterwards, return every element until the iterable is exhausted.
+    """
+
+    def __init__(self, predicate, iterable):
+        self.predicate = predicate
+        self.iterable = iter(iterable)
+        self.done_dropping = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while not self.done_dropping:
+            n = next(self.iterable)
+            if self.predicate(n):
+                continue
+            else:
+                self.done_dropping = True
+                return n
+        return next(self.iterable)
+
+
+class filterfalse(object):
+    """
+    filterfalse(function or None, sequence) --> filterfalse object
+
+    Return those items of sequence for which function(item) is false.
+    If function is None, return the items that are false.
+    """
+
+    def __init__(self, func, sequence):
+        self.func = func or (lambda x: False)
+        self.iterator = iter(sequence)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while True:
+            n = next(self.iterator)
+            if not self.func(n):
+                return n
+
+class takewhile(object):
+    """Make an iterator that returns elements from the iterable as
+    long as the predicate is true.
+
+    Equivalent to :
+    
+    def takewhile(predicate, iterable):
+        for x in iterable:
+            if predicate(x):
+                yield x
+            else:
+                break
+    """
+    def __init__(self, predicate, iterable):
+        self._predicate = predicate
+        self._iter = iter(iterable)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        value = next(self._iter)
+        if not self._predicate(value):
+            self._iter = iter([])
+            raise StopIteration()
+        return value
+
+class groupby(object):
+    """Make an iterator that returns consecutive keys and groups from the
+    iterable. The key is a function computing a key value for each
+    element. If not specified or is None, key defaults to an identity
+    function and returns the element unchanged. Generally, the
+    iterable needs to already be sorted on the same key function.
+
+    The returned group is itself an iterator that shares the
+    underlying iterable with groupby(). Because the source is shared,
+    when the groupby object is advanced, the previous group is no
+    longer visible. So, if that data is needed later, it should be
+    stored as a list:
+
+       groups = []
+       uniquekeys = []
+       for k, g in groupby(data, keyfunc):
+           groups.append(list(g))      # Store group iterator as a list
+           uniquekeys.append(k)
+    """    
+    def __init__(self, iterable, key=None):
+        if key is None:
+            key = lambda x: x
+        self._keyfunc = key
+        self._iter = iter(iterable)
+        self._tgtkey = self._currkey = self._currvalue = xrange(0)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while self._currkey == self._tgtkey:
+            self._currvalue = next(self._iter) # Exit on StopIteration
+            self._currkey = self._keyfunc(self._currvalue)
+        self._tgtkey = self._currkey
+        return (self._currkey, self._grouper(self._tgtkey))
+
+    def _grouper(self, tgtkey):
+        while self._currkey == tgtkey:
+            yield self._currvalue
+            self._currvalue = next(self._iter) # Exit on StopIteration
+            self._currkey = self._keyfunc(self._currvalue)

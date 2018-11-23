@@ -40,6 +40,7 @@
  */
 package com.oracle.graal.python.nodes;
 
+import com.oracle.graal.python.builtins.PythonBuiltinClassType;
 import com.oracle.graal.python.builtins.objects.PNone;
 import com.oracle.graal.python.builtins.objects.PythonAbstractObject;
 import com.oracle.graal.python.builtins.objects.array.PArray;
@@ -47,6 +48,7 @@ import com.oracle.graal.python.builtins.objects.bytes.PByteArray;
 import com.oracle.graal.python.builtins.objects.bytes.PBytes;
 import com.oracle.graal.python.builtins.objects.cext.PythonNativeClass;
 import com.oracle.graal.python.builtins.objects.cext.PythonNativeObject;
+import com.oracle.graal.python.builtins.objects.dict.PDict;
 import com.oracle.graal.python.builtins.objects.floats.PFloat;
 import com.oracle.graal.python.builtins.objects.function.PArguments;
 import com.oracle.graal.python.builtins.objects.function.PBuiltinFunction;
@@ -61,6 +63,7 @@ import com.oracle.graal.python.builtins.objects.set.PFrozenSet;
 import com.oracle.graal.python.builtins.objects.slice.PSlice;
 import com.oracle.graal.python.builtins.objects.str.PString;
 import com.oracle.graal.python.builtins.objects.tuple.PTuple;
+import com.oracle.graal.python.builtins.objects.type.LazyPythonClass;
 import com.oracle.graal.python.builtins.objects.type.PythonBuiltinClass;
 import com.oracle.graal.python.builtins.objects.type.PythonClass;
 import com.oracle.graal.python.runtime.sequence.PSequence;
@@ -97,6 +100,10 @@ public abstract class PGuards {
 
     public static boolean isNoValue(Object object) {
         return object == PNone.NO_VALUE;
+    }
+
+    public static boolean isDict(Object object) {
+        return object instanceof PDict;
     }
 
     public static boolean isCallable(Object value) {
@@ -334,7 +341,7 @@ public abstract class PGuards {
      * Tests if the class of a Python object is a builtin class, i.e., any magic methods cannot be
      * overridden.
      */
-    public static boolean cannotBeOverridden(PythonClass clazz) {
-        return clazz.isBuiltin();
+    public static boolean cannotBeOverridden(LazyPythonClass clazz) {
+        return clazz instanceof PythonBuiltinClassType || clazz instanceof PythonBuiltinClass;
     }
 }

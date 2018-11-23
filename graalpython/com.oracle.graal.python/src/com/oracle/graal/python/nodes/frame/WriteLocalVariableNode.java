@@ -34,7 +34,6 @@ import com.oracle.graal.python.nodes.frame.WriteLocalVariableNodeGen.WriteLocalF
 import com.oracle.graal.python.nodes.statement.StatementNode;
 import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.dsl.NodeChild;
-import com.oracle.truffle.api.dsl.NodeChildren;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.FrameSlot;
 import com.oracle.truffle.api.frame.FrameSlotKind;
@@ -46,7 +45,7 @@ import com.oracle.truffle.api.nodes.NodeCost;
 import com.oracle.truffle.api.nodes.NodeInfo;
 
 @NodeInfo(shortName = "write_local")
-@NodeChildren({@NodeChild(value = "rightNode", type = ExpressionNode.class)})
+@NodeChild(value = "rightNode", type = ExpressionNode.class)
 public abstract class WriteLocalVariableNode extends StatementNode implements WriteIdentifierNode {
     @Child private WriteLocalFrameSlotNode writeNode;
 
@@ -108,7 +107,7 @@ public abstract class WriteLocalVariableNode extends StatementNode implements Wr
             return value;
         }
 
-        @Specialization(guards = {"isLongOrObjectKind(frame)", "isPrimitiveInt(value)"}, rewriteOn = ArithmeticException.class)
+        @Specialization(guards = {"isLongOrObjectKind(frame)", "isPrimitiveInt(value)", "!value.isNative()"}, rewriteOn = ArithmeticException.class)
         public PInt writePIntAsLong(VirtualFrame frame, PInt value) {
             frame.getFrameDescriptor().setFrameSlotKind(frameSlot, FrameSlotKind.Long);
             frame.setLong(frameSlot, value.longValueExact());

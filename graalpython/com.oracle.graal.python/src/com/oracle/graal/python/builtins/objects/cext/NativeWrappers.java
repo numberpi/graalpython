@@ -43,9 +43,10 @@ package com.oracle.graal.python.builtins.objects.cext;
 import com.oracle.graal.python.builtins.objects.PythonAbstractObject;
 import com.oracle.graal.python.builtins.objects.cext.CArrayWrappers.CStringWrapper;
 import com.oracle.graal.python.builtins.objects.common.DynamicObjectStorage.PythonObjectDictStorage;
-import com.oracle.graal.python.builtins.objects.object.PythonObject;
+import com.oracle.graal.python.builtins.objects.ints.PInt;
 import com.oracle.graal.python.builtins.objects.str.PString;
 import com.oracle.graal.python.builtins.objects.type.PythonClass;
+import com.oracle.truffle.api.Assumption;
 import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.interop.ForeignAccess;
 import com.oracle.truffle.api.interop.TruffleObject;
@@ -58,9 +59,23 @@ public abstract class NativeWrappers {
 
     public abstract static class PythonNativeWrapper implements TruffleObject {
 
+        private Object delegate;
         private Object nativePointer;
 
-        public abstract Object getDelegate();
+        public PythonNativeWrapper() {
+        }
+
+        public PythonNativeWrapper(Object delegate) {
+            this.delegate = delegate;
+        }
+
+        public final Object getDelegate() {
+            return delegate;
+        }
+
+        protected void setDelegate(Object delegate) {
+            this.delegate = delegate;
+        }
 
         public Object getNativePointer() {
             return nativePointer;
@@ -92,9 +107,20 @@ public abstract class NativeWrappers {
 
         private PythonObjectDictStorage nativeMemberStore;
 
+        public DynamicObjectNativeWrapper() {
+        }
+
+        public DynamicObjectNativeWrapper(Object delegate) {
+            super(delegate);
+        }
+
         public PythonObjectDictStorage createNativeMemberStore() {
+            return createNativeMemberStore(null);
+        }
+
+        public PythonObjectDictStorage createNativeMemberStore(Assumption dictStableAssumption) {
             if (nativeMemberStore == null) {
-                nativeMemberStore = new PythonObjectDictStorage(SHAPE.newInstance());
+                nativeMemberStore = new PythonObjectDictStorage(SHAPE.newInstance(), dictStableAssumption);
             }
             return nativeMemberStore;
         }
@@ -110,14 +136,12 @@ public abstract class NativeWrappers {
      */
     public static class PythonObjectNativeWrapper extends DynamicObjectNativeWrapper {
 
-        private final PythonAbstractObject pythonObject;
-
         public PythonObjectNativeWrapper(PythonAbstractObject object) {
-            this.pythonObject = object;
+            super(object);
         }
 
         public PythonAbstractObject getPythonObject() {
-            return pythonObject;
+            return (PythonAbstractObject) getDelegate();
         }
 
         public static DynamicObjectNativeWrapper wrap(PythonAbstractObject obj, ConditionProfile noWrapperProfile) {
@@ -131,172 +155,113 @@ public abstract class NativeWrappers {
         }
 
         @Override
-        public Object getDelegate() {
-            return pythonObject;
-        }
-
-        @Override
         public String toString() {
             CompilerAsserts.neverPartOfCompilation();
-            return String.format("PythonObjectNativeWrapper(%s, isNative=%s)", pythonObject, isNative());
+            return String.format("PythonObjectNativeWrapper(%s, isNative=%s)", getDelegate(), isNative());
         }
     }
 
-    public abstract static class PrimitiveNativeWrapper extends DynamicObjectNativeWrapper {
+    public static class PrimitiveNativeWrapper extends DynamicObjectNativeWrapper {
 
-        private PythonObject materializedObject;
+        public static final byte PRIMITIVE_STATE_BOOL = 1 << 0;
+        public static final byte PRIMITIVE_STATE_BYTE = 1 << 1;
+        public static final byte PRIMITIVE_STATE_INT = 1 << 2;
+        public static final byte PRIMITIVE_STATE_LONG = 1 << 3;
+        public static final byte PRIMITIVE_STATE_DOUBLE = 1 << 4;
 
-        protected abstract Object getBoxedValue();
-
-        @Override
-        public Object getDelegate() {
-            if (materializedObject != null) {
-                return materializedObject;
-            }
-            return getBoxedValue();
-        }
-
-        void setMaterializedObject(PythonObject materializedObject) {
-            this.materializedObject = materializedObject;
-        }
-
-        PythonObject getMaterializedObject() {
-            return materializedObject;
-        }
-    }
-
-    public static class BoolNativeWrapper extends PrimitiveNativeWrapper {
-        private final boolean value;
-
-        private BoolNativeWrapper(boolean value) {
-            this.value = value;
-        }
-
-        public boolean getValue() {
-            return value;
-        }
-
-        @Override
-        public Boolean getBoxedValue() {
-            return value;
-        }
-
-        @Override
-        public String toString() {
-            CompilerAsserts.neverPartOfCompilation();
-            return String.format("BoolNativeWrapper(%s, isNative=%s)", value, isNative());
-        }
-
-        public static BoolNativeWrapper create(boolean value) {
-            return new BoolNativeWrapper(value);
-        }
-    }
-
-    public static class ByteNativeWrapper extends PrimitiveNativeWrapper {
-        private final byte value;
-
-        private ByteNativeWrapper(byte value) {
-            this.value = value;
-        }
-
-        public byte getValue() {
-            return value;
-        }
-
-        @Override
-        public Byte getBoxedValue() {
-            return value;
-        }
-
-        @Override
-        public String toString() {
-            CompilerAsserts.neverPartOfCompilation();
-            return String.format("ByteNativeWrapper(%s, isNative=%s)", value, isNative());
-        }
-
-        public static ByteNativeWrapper create(byte value) {
-            return new ByteNativeWrapper(value);
-        }
-    }
-
-    public static class IntNativeWrapper extends PrimitiveNativeWrapper {
-        private final int value;
-
-        private IntNativeWrapper(int value) {
-            this.value = value;
-        }
-
-        public int getValue() {
-            return value;
-        }
-
-        @Override
-        public Integer getBoxedValue() {
-            return value;
-        }
-
-        @Override
-        public String toString() {
-            CompilerAsserts.neverPartOfCompilation();
-            return String.format("IntNativeWrapper(%s, isNative=%s)", value, isNative());
-        }
-
-        public static IntNativeWrapper create(int value) {
-            return new IntNativeWrapper(value);
-        }
-    }
-
-    public static class LongNativeWrapper extends PrimitiveNativeWrapper {
+        private final byte state;
         private final long value;
+        private final double dvalue;
 
-        private LongNativeWrapper(long value) {
+        private PrimitiveNativeWrapper(byte state, long value) {
+            assert state != PRIMITIVE_STATE_DOUBLE;
+            this.state = state;
             this.value = value;
+            this.dvalue = 0.0;
         }
 
-        public long getValue() {
+        private PrimitiveNativeWrapper(double dvalue) {
+            this.state = PRIMITIVE_STATE_DOUBLE;
+            this.value = 0;
+            this.dvalue = dvalue;
+        }
+
+        public byte getState() {
+            return state;
+        }
+
+        public boolean getBool() {
+            return value != 0;
+        }
+
+        public byte getByte() {
+            return (byte) value;
+        }
+
+        public int getInt() {
+            return (int) value;
+        }
+
+        public long getLong() {
             return value;
         }
 
-        @Override
-        public Long getBoxedValue() {
-            return value;
+        public double getDouble() {
+            return dvalue;
         }
 
-        @Override
-        public String toString() {
-            CompilerAsserts.neverPartOfCompilation();
-            return String.format("LongNativeWrapper(%s, isNative=%s)", value, isNative());
+        public boolean isBool() {
+            return state == PRIMITIVE_STATE_BOOL;
         }
 
-        public static LongNativeWrapper create(long value) {
-            return new LongNativeWrapper(value);
-        }
-    }
-
-    public static class DoubleNativeWrapper extends PrimitiveNativeWrapper {
-        private final double value;
-
-        private DoubleNativeWrapper(double value) {
-            this.value = value;
+        public boolean isByte() {
+            return state == PRIMITIVE_STATE_BYTE;
         }
 
-        public double getValue() {
-            return value;
+        public boolean isInt() {
+            return state == PRIMITIVE_STATE_INT;
         }
 
-        @Override
-        public Double getBoxedValue() {
-            return value;
+        public boolean isLong() {
+            return state == PRIMITIVE_STATE_LONG;
         }
 
-        @Override
-        public String toString() {
-            CompilerAsserts.neverPartOfCompilation();
-            return String.format("DoubleNativeWrapper(%s, isNative=%s)", value, isNative());
+        public boolean isDouble() {
+            return state == PRIMITIVE_STATE_DOUBLE;
         }
 
-        public static DoubleNativeWrapper create(double value) {
-            return new DoubleNativeWrapper(value);
+        public boolean isIntLike() {
+            return (state & (PRIMITIVE_STATE_BYTE | PRIMITIVE_STATE_INT | PRIMITIVE_STATE_LONG)) != 0;
+        }
+
+        // this method exists just for readability
+        public Object getMaterializedObject() {
+            return getDelegate();
+        }
+
+        // this method exists just for readability
+        public void setMaterializedObject(Object materializedPrimitive) {
+            setDelegate(materializedPrimitive);
+        }
+
+        public static PrimitiveNativeWrapper createBool(boolean val) {
+            return new PrimitiveNativeWrapper(PRIMITIVE_STATE_BOOL, PInt.intValue(val));
+        }
+
+        public static PrimitiveNativeWrapper createByte(byte val) {
+            return new PrimitiveNativeWrapper(PRIMITIVE_STATE_BYTE, val);
+        }
+
+        public static PrimitiveNativeWrapper createInt(int val) {
+            return new PrimitiveNativeWrapper(PRIMITIVE_STATE_INT, val);
+        }
+
+        public static PrimitiveNativeWrapper createLong(long val) {
+            return new PrimitiveNativeWrapper(PRIMITIVE_STATE_LONG, val);
+        }
+
+        public static PrimitiveNativeWrapper createDouble(double val) {
+            return new PrimitiveNativeWrapper(val);
         }
     }
 
@@ -372,19 +337,12 @@ public abstract class NativeWrappers {
      */
     public static class PySequenceArrayWrapper extends PythonNativeWrapper {
 
-        private final Object delegate;
-
         /** Number of bytes that constitute a single element. */
         private final int elementAccessSize;
 
         public PySequenceArrayWrapper(Object delegate, int elementAccessSize) {
-            this.delegate = delegate;
+            super(delegate);
             this.elementAccessSize = elementAccessSize;
-        }
-
-        @Override
-        public Object getDelegate() {
-            return delegate;
         }
 
         public int getElementAccessSize() {
@@ -402,37 +360,25 @@ public abstract class NativeWrappers {
     }
 
     public static class TruffleObjectNativeWrapper extends PythonNativeWrapper {
-        private final TruffleObject foreignObject;
 
         public TruffleObjectNativeWrapper(TruffleObject foreignObject) {
-            this.foreignObject = foreignObject;
-        }
-
-        public TruffleObject getForeignObject() {
-            return foreignObject;
+            super(foreignObject);
         }
 
         public static TruffleObjectNativeWrapper wrap(TruffleObject foreignObject) {
             assert !(foreignObject instanceof PythonNativeWrapper) : "attempting to wrap a native wrapper";
             return new TruffleObjectNativeWrapper(foreignObject);
         }
-
-        @Override
-        public Object getDelegate() {
-            return foreignObject;
-        }
     }
 
     abstract static class PyUnicodeWrapper extends PythonNativeWrapper {
-        private final PString delegate;
 
         public PyUnicodeWrapper(PString delegate) {
-            this.delegate = delegate;
+            super(delegate);
         }
 
-        @Override
-        public PString getDelegate() {
-            return delegate;
+        public PString getPString() {
+            return (PString) getDelegate();
         }
 
         @Override
@@ -452,7 +398,6 @@ public abstract class NativeWrappers {
         public PyUnicodeData(PString delegate) {
             super(delegate);
         }
-
     }
 
     /**

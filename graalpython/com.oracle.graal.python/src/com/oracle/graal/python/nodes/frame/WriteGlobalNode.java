@@ -50,13 +50,12 @@ import com.oracle.graal.python.nodes.subscript.SetItemNode;
 import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.NodeChild;
-import com.oracle.truffle.api.dsl.NodeChildren;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.StandardTags;
 import com.oracle.truffle.api.instrumentation.Tag;
 
-@NodeChildren({@NodeChild(value = "rhs", type = ExpressionNode.class)})
+@NodeChild(value = "rhs", type = ExpressionNode.class)
 public abstract class WriteGlobalNode extends StatementNode implements GlobalNode, WriteNode {
     protected final String attributeId;
 
@@ -64,8 +63,8 @@ public abstract class WriteGlobalNode extends StatementNode implements GlobalNod
         this.attributeId = attributeId;
     }
 
-    public static WriteGlobalNode create() {
-        return create(null, null);
+    public static WriteGlobalNode create(String attributeId) {
+        return create(attributeId, null);
     }
 
     public static WriteGlobalNode create(String attributeId, ExpressionNode rhs) {

@@ -45,6 +45,7 @@ import com.oracle.graal.python.builtins.objects.cext.CArrayWrappers.CArrayWrappe
 import com.oracle.graal.python.builtins.objects.cext.CArrayWrappers.CByteArrayWrapper;
 import com.oracle.graal.python.builtins.objects.cext.CArrayWrappers.CStringWrapper;
 import com.oracle.graal.python.builtins.objects.cext.CExtNodes.CExtBaseNode;
+import com.oracle.graal.python.builtins.objects.cext.PythonObjectNativeWrapperMR.InvalidateNativeObjectsAllManagedNode;
 import com.oracle.graal.python.builtins.objects.ints.PInt;
 import com.oracle.graal.python.nodes.SpecialMethodNames;
 import com.oracle.truffle.api.CompilerDirectives;
@@ -66,7 +67,7 @@ public class CArrayWrapperMR {
     @Resolve(message = "READ")
     abstract static class ReadNode extends Node {
         public char access(CStringWrapper object, int idx) {
-            String s = object.getDelegate();
+            String s = object.getString();
             if (idx >= 0 && idx < s.length()) {
                 return s.charAt(idx);
             } else if (idx == s.length()) {
@@ -86,7 +87,7 @@ public class CArrayWrapperMR {
         }
 
         public byte access(CByteArrayWrapper object, int idx) {
-            byte[] arr = object.getDelegate();
+            byte[] arr = object.getByteArray();
             if (idx >= 0 && idx < arr.length) {
                 return arr[idx];
             } else if (idx == arr.length) {
@@ -127,7 +128,7 @@ public class CArrayWrapperMR {
 
         @Specialization
         Object doTuple(CStringWrapper object) {
-            return callGetByteArrayTypeID(object.getDelegate().length());
+            return callGetByteArrayTypeID(object.getString().length());
         }
 
         private Object callGetByteArrayTypeID(long len) {
@@ -149,18 +150,20 @@ public class CArrayWrapperMR {
     @Resolve(message = "GET_SIZE")
     abstract static class GetSizeNode extends Node {
         long access(CStringWrapper obj) {
-            return obj.getDelegate().length();
+            return obj.getString().length();
         }
 
         int access(CByteArrayWrapper obj) {
-            return obj.getDelegate().length;
+            return obj.getByteArray().length;
         }
     }
 
     @Resolve(message = "IS_POINTER")
     abstract static class IsPointerNode extends Node {
+        @Child private CExtNodes.IsPointerNode pIsPointerNode = CExtNodes.IsPointerNode.create();
+
         boolean access(CArrayWrapper obj) {
-            return obj.isNative();
+            return pIsPointerNode.execute(obj);
         }
     }
 
@@ -190,8 +193,10 @@ public class CArrayWrapperMR {
     @Resolve(message = "TO_NATIVE")
     abstract static class ToNativeNode extends Node {
         @Child private CExtNodes.AsCharPointer asCharPointerNode;
+        @Child private InvalidateNativeObjectsAllManagedNode invalidateNode = InvalidateNativeObjectsAllManagedNode.create();
 
         Object access(CArrayWrapper obj) {
+            invalidateNode.execute();
             if (!obj.isNative()) {
                 if (asCharPointerNode == null) {
                     CompilerDirectives.transferToInterpreterAndInvalidate();

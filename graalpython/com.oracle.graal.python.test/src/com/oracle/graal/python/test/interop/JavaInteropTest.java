@@ -46,7 +46,9 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Set;
+import java.io.UnsupportedEncodingException;
+import java.util.Arrays;
+import java.util.List;
 
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Context.Builder;
@@ -66,17 +68,17 @@ import com.oracle.truffle.api.interop.UnknownIdentifierException;
 import com.oracle.truffle.api.nodes.Node;
 
 public class JavaInteropTest extends PythonTests {
-    private ByteArrayOutputStream os;
+    private ByteArrayOutputStream out;
     private Context context;
     private ByteArrayOutputStream err;
 
     @Before
     public void setUpTest() {
-        os = new ByteArrayOutputStream();
+        out = new ByteArrayOutputStream();
         err = new ByteArrayOutputStream();
         Builder builder = Context.newBuilder();
         builder.allowAllAccess(true);
-        builder.out(os);
+        builder.out(out);
         builder.err(err);
         context = builder.build();
     }
@@ -98,7 +100,7 @@ public class JavaInteropTest extends PythonTests {
     }
 
     @Test
-    public void truffleMethodExport() throws Exception {
+    public void truffleMethodExport() {
         String source = "import polyglot\n" +
                         "@polyglot.export_value\n" +
                         "def foo():\n" +
@@ -110,7 +112,7 @@ public class JavaInteropTest extends PythonTests {
     }
 
     @Test
-    public void javaArraySet() throws Exception {
+    public void javaArraySet() {
         String source = "import java\n" +
                         "array = java.type(\"int[]\")(4)\n" +
                         "array[2] = 42\n" +
@@ -119,7 +121,7 @@ public class JavaInteropTest extends PythonTests {
     }
 
     @Test
-    public void testPassingFloats() throws Exception {
+    public void testPassingFloats() throws UnsupportedEncodingException {
         String source = "import polyglot\n" +
                         "@polyglot.export_value\n" +
                         "def foo(x, y):\n" +
@@ -128,11 +130,11 @@ public class JavaInteropTest extends PythonTests {
         context.eval(script);
         Value main = context.getPolyglotBindings().getMember("foo");
         main.execute((float) 1.0, (float) 2.0);
-        assertEquals("2.0\n", os.toString("UTF-8"));
+        assertEquals("2.0\n", out.toString("UTF-8"));
     }
 
     @Test
-    public void testAsFunction() throws Exception {
+    public void testAsFunction() throws UnsupportedEncodingException {
         String source = "import polyglot\n" +
                         "@polyglot.export_value\n" +
                         "def foo():\n" +
@@ -141,11 +143,11 @@ public class JavaInteropTest extends PythonTests {
         context.eval(script);
         Value main = context.getPolyglotBindings().getMember("foo");
         main.execute();
-        assertEquals("Called\n", os.toString("UTF-8"));
+        assertEquals("Called\n", out.toString("UTF-8"));
     }
 
     @Test
-    public void testAsFunctionVarArgs() throws Exception {
+    public void testAsFunctionVarArgs() throws UnsupportedEncodingException {
         String source = "import polyglot\n" +
                         "@polyglot.export_value\n" +
                         "def foo(a, b):\n" +
@@ -154,39 +156,39 @@ public class JavaInteropTest extends PythonTests {
         context.eval(script);
         Value main = context.getPolyglotBindings().getMember("foo");
         main.execute("Hello", "World");
-        assertEquals("Hello World\n", os.toString("UTF-8"));
+        assertEquals("Hello World\n", out.toString("UTF-8"));
     }
 
     @Test
-    public void mainFunctionsAreImplicitlyImporteable() throws Exception {
+    public void mainFunctionsAreImplicitlyImporteable() throws UnsupportedEncodingException {
         String source = "def foo(a, b):\n" +
                         "    print(a, b)\n\n";
         Source script = Source.create("python", source);
         context.eval(script);
         Value main = context.getBindings("python").getMember("foo");
         main.execute("Hello", "World");
-        assertEquals("Hello World\n", os.toString("UTF-8"));
+        assertEquals("Hello World\n", out.toString("UTF-8"));
     }
 
     @Test
-    public void builtinFunctionsAreImporteable() throws Exception {
+    public void builtinFunctionsAreImporteable() throws UnsupportedEncodingException {
         String source = "pass";
         Source script = Source.create("python", source);
         context.eval(script);
         Value main = context.getBindings("python").getMember("__builtins__").getMember("print");
         main.execute("Hello", "World");
-        assertEquals("Hello World\n", os.toString("UTF-8"));
+        assertEquals("Hello World\n", out.toString("UTF-8"));
     }
 
     @Test
-    public void testMultipleInvocationsAreInSameScope() throws Exception {
+    public void testMultipleInvocationsAreInSameScope() throws UnsupportedEncodingException {
         String source = "def foo(a, b):\n" +
                         "    print(a, b)\n" +
                         "foo";
         Source script = Source.create("python", source);
         Value foo = context.eval(script);
         foo.execute("Hello", "World");
-        assertEquals("Hello World\n", os.toString("UTF-8"));
+        assertEquals("Hello World\n", out.toString("UTF-8"));
 
         source = "def bar(a, b):\n" +
                         "    foo(a, b)\n" +
@@ -194,7 +196,7 @@ public class JavaInteropTest extends PythonTests {
         script = Source.create("python", source);
         Value bar = context.eval(script);
         bar.execute("Hello", "World");
-        assertEquals("Hello World\nHello World\n", os.toString("UTF-8"));
+        assertEquals("Hello World\nHello World\n", out.toString("UTF-8"));
 
         source = "invalid syntax";
         script = Source.create("python", source);
@@ -203,9 +205,9 @@ public class JavaInteropTest extends PythonTests {
         } catch (Throwable t) {
         }
         bar.execute("Hello", "World");
-        assertEquals("Hello World\nHello World\nHello World\n", os.toString("UTF-8"));
+        assertEquals("Hello World\nHello World\nHello World\n", out.toString("UTF-8"));
         foo.execute("Hello", "World");
-        assertEquals("Hello World\nHello World\nHello World\nHello World\n", os.toString("UTF-8"));
+        assertEquals("Hello World\nHello World\nHello World\nHello World\n", out.toString("UTF-8"));
     }
 
     @Test
@@ -227,14 +229,14 @@ public class JavaInteropTest extends PythonTests {
 
         Value libraries = suite.getMember("libraries");
         assertNotNull("libraries found", libraries);
-        final Set<String> suiteKeys = suite.getMemberKeys();
+        final List<Object> suiteKeys = Arrays.asList(suite.invokeMember("keys").as(Object[].class));
         assertTrue("Libraries found among keys: " + suiteKeys, suiteKeys.contains("libraries"));
 
         Value dacapo = null;
-        for (String k : libraries.getMemberKeys()) {
+        for (Object k : libraries.invokeMember("keys").as(List.class)) {
             System.err.println("k " + k);
             if ("DACAPO".equals(k)) {
-                dacapo = libraries.getMember(k);
+                dacapo = libraries.getMember((String) k);
             }
         }
         assertNotNull("Dacapo found", dacapo);
@@ -334,5 +336,102 @@ public class JavaInteropTest extends PythonTests {
         Object[] result = execute.as(Object[].class);
         assert result[0].equals(ForeignObjectWithOOInvoke.class.getName());
         assert result[1].equals(ForeignObjectWithoutOOInvoke.class.getName());
+    }
+
+    public class JavaObject {
+        public byte byteValue = 1;
+        public short shortValue = 2;
+        public int intValue = 3;
+        public long longValue = 4;
+        public float floatValue = 5;
+        public double doubleValue = 6;
+        public boolean booleanValue = true;
+        public char charValue = 'c';
+
+        public byte getByteValue() {
+            return byteValue;
+        }
+
+        public short getShortValue() {
+            return shortValue;
+        }
+
+        public int getIntValue() {
+            return intValue;
+        }
+
+        public long getLongValue() {
+            return longValue;
+        }
+
+        public float getFloatValue() {
+            return floatValue;
+        }
+
+        public double getDoubleValue() {
+            return doubleValue;
+        }
+
+        public boolean getBooleanValue() {
+            return booleanValue;
+        }
+
+        public char getCharValue() {
+            return charValue;
+        }
+    }
+
+    @Test
+    public void accessJavaObjectFields() throws IOException {
+        Source suitePy = Source.newBuilder("python", "" +
+                        "def foo(obj):\n" +
+                        "  print(obj.byteValue, type(obj.byteValue))\n" +
+                        "  print(obj.shortValue, type(obj.shortValue))\n" +
+                        "  print(obj.intValue, type(obj.intValue))\n" +
+                        "  print(obj.longValue, type(obj.longValue))\n" +
+                        "  print(obj.floatValue, type(obj.floatValue))\n" +
+                        "  print(obj.doubleValue, type(obj.doubleValue))\n" +
+                        "  print(obj.booleanValue, type(obj.booleanValue))\n" +
+                        "  print(obj.charValue, type(obj.charValue))\n" +
+                        "foo",
+                        "suite.py").build();
+        Value foo = context.eval(suitePy);
+        foo.execute(new JavaObject());
+        assertEquals("" +
+                        "1 <class 'int'>\n" +
+                        "2 <class 'int'>\n" +
+                        "3 <class 'int'>\n" +
+                        "4 <class 'int'>\n" +
+                        "5.0 <class 'float'>\n" +
+                        "6.0 <class 'float'>\n" +
+                        "True <class 'bool'>\n" +
+                        "c <class 'str'>\n", out.toString("UTF-8"));
+    }
+
+    @Test
+    public void accessJavaObjectGetters() throws IOException {
+        Source suitePy = Source.newBuilder("python", "" +
+                        "def foo(obj):\n" +
+                        "  print(obj.getByteValue(), type(obj.getByteValue()))\n" +
+                        "  print(obj.getShortValue(), type(obj.getShortValue()))\n" +
+                        "  print(obj.getIntValue(), type(obj.getIntValue()))\n" +
+                        "  print(obj.getLongValue(), type(obj.getLongValue()))\n" +
+                        "  print(obj.getFloatValue(), type(obj.getFloatValue()))\n" +
+                        "  print(obj.getDoubleValue(), type(obj.getDoubleValue()))\n" +
+                        "  print(obj.getBooleanValue(), type(obj.getBooleanValue()))\n" +
+                        "  print(obj.getCharValue(), type(obj.getCharValue()))\n" +
+                        "foo",
+                        "suite.py").build();
+        Value foo = context.eval(suitePy);
+        foo.execute(new JavaObject());
+        assertEquals("" +
+                        "1 <class 'int'>\n" +
+                        "2 <class 'int'>\n" +
+                        "3 <class 'int'>\n" +
+                        "4 <class 'int'>\n" +
+                        "5.0 <class 'float'>\n" +
+                        "6.0 <class 'float'>\n" +
+                        "True <class 'bool'>\n" +
+                        "c <class 'str'>\n", out.toString("UTF-8"));
     }
 }

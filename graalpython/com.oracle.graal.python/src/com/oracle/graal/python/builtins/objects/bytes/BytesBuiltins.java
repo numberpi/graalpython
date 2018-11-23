@@ -44,6 +44,7 @@ import static com.oracle.graal.python.nodes.SpecialMethodNames.__RMUL__;
 import static com.oracle.graal.python.nodes.SpecialMethodNames.__SETITEM__;
 import static com.oracle.graal.python.runtime.exception.PythonErrorType.TypeError;
 
+import java.io.UnsupportedEncodingException;
 import java.nio.charset.CodingErrorAction;
 import java.util.List;
 
@@ -53,9 +54,13 @@ import com.oracle.graal.python.builtins.PythonBuiltinClassType;
 import com.oracle.graal.python.builtins.PythonBuiltins;
 import com.oracle.graal.python.builtins.objects.PNone;
 import com.oracle.graal.python.builtins.objects.PNotImplemented;
+import com.oracle.graal.python.builtins.objects.common.HashingCollectionNodes.SetItemNode;
 import com.oracle.graal.python.builtins.objects.common.SequenceStorageNodes;
 import com.oracle.graal.python.builtins.objects.common.SequenceStorageNodes.NormalizeIndexNode;
+import com.oracle.graal.python.builtins.objects.common.SequenceStorageNodes.ToByteArrayNode;
+import com.oracle.graal.python.builtins.objects.dict.PDict;
 import com.oracle.graal.python.builtins.objects.iterator.PSequenceIterator;
+import com.oracle.graal.python.builtins.objects.list.PList;
 import com.oracle.graal.python.nodes.PNodeWithContext;
 import com.oracle.graal.python.nodes.function.PythonBuiltinBaseNode;
 import com.oracle.graal.python.nodes.function.PythonBuiltinNode;
@@ -63,6 +68,7 @@ import com.oracle.graal.python.nodes.function.builtins.PythonBinaryBuiltinNode;
 import com.oracle.graal.python.nodes.function.builtins.PythonTernaryBuiltinNode;
 import com.oracle.graal.python.nodes.function.builtins.PythonUnaryBuiltinNode;
 import com.oracle.graal.python.runtime.exception.PythonErrorType;
+import com.oracle.graal.python.runtime.sequence.storage.ByteSequenceStorage;
 import com.oracle.graal.python.runtime.sequence.storage.SequenceStorage;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
@@ -240,7 +246,7 @@ public class BytesBuiltins extends PythonBuiltins {
         @Specialization
         public Object add(PBytes left, PIBytesLike right,
                         @Cached("create()") SequenceStorageNodes.ConcatNode concatNode) {
-            SequenceStorage res = concatNode.execute(left.getSequenceStorage(), right.getSequenceStorage());
+            ByteSequenceStorage res = (ByteSequenceStorage) concatNode.execute(left.getSequenceStorage(), right.getSequenceStorage());
             return factory().createBytes(res);
         }
 
@@ -257,7 +263,7 @@ public class BytesBuiltins extends PythonBuiltins {
         @Specialization
         public Object mul(PBytes self, int times,
                         @Cached("create()") SequenceStorageNodes.RepeatNode repeatNode) {
-            SequenceStorage res = repeatNode.execute(self.getSequenceStorage(), times);
+            ByteSequenceStorage res = (ByteSequenceStorage) repeatNode.execute(self.getSequenceStorage(), times);
             return factory().createBytes(res);
         }
 
@@ -295,7 +301,33 @@ public class BytesBuiltins extends PythonBuiltins {
     @Builtin(name = "join", fixedNumOfPositionalArgs = 2)
     @GenerateNodeFactory
     public abstract static class JoinNode extends PythonBinaryBuiltinNode {
-        @Specialization
+        /**
+         * @param bytes - the parameter is used to force the DSL to make this a dynamic check
+         */
+        protected boolean readOpaque(PBytes bytes) {
+            return OpaqueBytes.isEnabled(getContext());
+        }
+
+        @Specialization(guards = {"readOpaque(bytes)"})
+        public Object join(PBytes bytes, PList iterable,
+                        @Cached("create()") SequenceStorageNodes.GetItemNode getItemNode,
+                        @Cached("create()") SequenceStorageNodes.LenNode lenNode,
+                        @Cached("create()") SequenceStorageNodes.ToByteArrayNode toByteArrayNode,
+                        @Cached("create()") BytesNodes.BytesJoinNode bytesJoinNode) {
+            int len = lenNode.execute(iterable.getSequenceStorage());
+            if (len == 1) {
+                // branch profiles aren't really needed, because of the specialization
+                // happening in the getItemNode on first execution and the assumption
+                // in OpaqueBytes.isInstance
+                Object firstItem = getItemNode.execute(iterable.getSequenceStorage(), 0);
+                if (OpaqueBytes.isInstance(firstItem)) {
+                    return firstItem;
+                }
+            }
+            return join(bytes, iterable, toByteArrayNode, bytesJoinNode);
+        }
+
+        @Specialization(guards = {"!readOpaque(bytes)"})
         public PBytes join(PBytes bytes, Object iterable,
                         @Cached("create()") SequenceStorageNodes.ToByteArrayNode toByteArrayNode,
                         @Cached("create()") BytesNodes.BytesJoinNode bytesJoinNode) {
@@ -484,6 +516,56 @@ public class BytesBuiltins extends PythonBuiltins {
         @SuppressWarnings("unused")
         Object getitem(PBytes self, Object idx, Object value) {
             throw raise(TypeError, "'bytes' object does not support item assignment");
+        }
+    }
+
+    // static str.maketrans()
+    @Builtin(name = "maketrans", fixedNumOfPositionalArgs = 2)
+    @GenerateNodeFactory
+    public abstract static class MakeTransNode extends PythonBuiltinNode {
+
+        @Specialization
+        public PDict maketrans(PBytes from, PBytes to,
+                        @Cached("create()") SetItemNode setItemNode,
+                        @Cached("create()") ToByteArrayNode toByteArrayNode) {
+            byte[] fromB = toByteArrayNode.execute(from.getSequenceStorage());
+            byte[] toB = toByteArrayNode.execute(to.getSequenceStorage());
+            if (fromB.length != toB.length) {
+                throw new RuntimeException("maketrans arguments must have same length");
+            }
+
+            PDict translation = factory().createDict();
+            for (int i = 0; i < fromB.length; i++) {
+                int key = fromB[i];
+                int value = toB[i];
+                setItemNode.execute(translation, key, value);
+            }
+
+            return translation;
+        }
+    }
+
+    @Builtin(name = "replace", fixedNumOfPositionalArgs = 3)
+    @GenerateNodeFactory
+    abstract static class ReplaceNode extends PythonTernaryBuiltinNode {
+        @Child BytesNodes.ToBytesNode toBytes = BytesNodes.ToBytesNode.create();
+
+        @Specialization
+        @TruffleBoundary
+        PBytes replace(PBytes self, PBytes substr, PBytes replacement) {
+            byte[] bytes = toBytes.execute(self);
+            byte[] subBytes = toBytes.execute(substr);
+            byte[] replacementBytes = toBytes.execute(replacement);
+            try {
+                String string = new String(bytes, "ASCII");
+                String subString = new String(subBytes, "ASCII");
+                String replacementString = new String(replacementBytes, "ASCII");
+                byte[] newBytes = string.replace(subString, replacementString).getBytes("ASCII");
+                return factory().createBytes(newBytes);
+            } catch (UnsupportedEncodingException e) {
+                CompilerDirectives.transferToInterpreter();
+                throw new IllegalStateException();
+            }
         }
     }
 }

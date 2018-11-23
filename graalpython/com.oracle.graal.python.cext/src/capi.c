@@ -131,8 +131,8 @@ declare_type(PyByteArray_Type, bytearray, PyByteArrayObject);
 declare_type(PyCFunction_Type, builtin_function_or_method, PyCFunctionObject);
 declare_type(PyMethodDescr_Type, method_descriptor, PyMethodDescrObject);
 declare_type(PyGetSetDescr_Type, getset_descriptor, PyGetSetDescrObject);
-declare_type(PyWrapperDescr_Type, wrapper_descriptor, PyWrapperDescrObject);
-declare_type(PyMemberDescr_Type, member_descriptor, PyMemberDescrObject);
+declare_type(PyWrapperDescr_Type, method_descriptor, PyWrapperDescrObject); // LS: previously wrapper_descriptor
+declare_type(PyMemberDescr_Type, property, PyMemberDescrObject); // LS: previously member_descriptor
 declare_type(_PyExc_BaseException, BaseException, PyBaseExceptionObject);
 declare_type(PyBuffer_Type, buffer, PyBufferDecorator);
 declare_type(PyFunction_Type, function, PyFunctionObject);
@@ -199,6 +199,19 @@ void* native_to_java_exported(PyObject* obj) {
     return native_to_java(obj);
 }
 
+void* native_pointer_to_java(PyObject* obj) {
+    if (obj == NULL) {
+        return Py_NoValue;
+    } else if (obj == Py_None) {
+        return Py_None;
+    } else if (polyglot_is_string(obj)) {
+        return obj;
+    } else if (!truffle_cannot_be_handle(obj)) {
+        return resolve_handle(cache, (uint64_t)obj);
+    }
+    return obj;
+}
+
 __attribute__((always_inline))
 inline void* to_java(PyObject* obj) {
     return polyglot_invoke(PY_TRUFFLE_CEXT, "to_java", native_to_java(obj));
@@ -247,7 +260,7 @@ uint64_t PyTruffle_Wchar_Size() {
     return SIZEOF_WCHAR_T;
 }
 
-void* PyObjectHandle_ForJavaObject(void* cobj, unsigned long flags) {
+void* PyObjectHandle_ForJavaObject(void* cobj) {
     if (truffle_cannot_be_handle(cobj)) {
         return truffle_deref_handle_for_managed(cobj);
     }
@@ -461,9 +474,8 @@ PyObject* WriteULongMember(PyObject* object, Py_ssize_t offset, PyObject* value)
     return value;
 }
 
-UPCALL_ID(__bool__);
 PyObject* WriteBoolMember(PyObject* object, Py_ssize_t offset, PyObject* value) {
-    WriteMember(object, offset, UPCALL_O(native_to_java(value), _jls___bool__) == Py_True ? (char)1 : (char)0, char);
+    WriteMember(object, offset, UPCALL_O(native_to_java(value), polyglot_from_string("__bool__", SRC_CS)) == Py_True ? (char)1 : (char)0, char);
     return value;
 }
 
