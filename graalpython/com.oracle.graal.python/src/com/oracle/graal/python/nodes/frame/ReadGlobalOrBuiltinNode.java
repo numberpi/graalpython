@@ -40,10 +40,13 @@ import com.oracle.graal.python.nodes.subscript.GetItemNode;
 import com.oracle.graal.python.runtime.PythonContext;
 import com.oracle.graal.python.runtime.PythonCore;
 import com.oracle.graal.python.runtime.exception.PException;
+import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.instrumentation.StandardTags;
+import com.oracle.truffle.api.instrumentation.Tag;
 import com.oracle.truffle.api.nodes.NodeInfo;
 import com.oracle.truffle.api.profiles.ConditionProfile;
 
@@ -131,5 +134,17 @@ public abstract class ReadGlobalOrBuiltinNode extends ExpressionNode implements 
 
     public String getAttributeId() {
         return attributeId;
+    }
+
+    @Override
+    public boolean hasTag(Class<? extends Tag> tag) {
+        return tag == StandardTags.ReadVariableTag.class || super.hasTag(tag);
+    }
+
+    @Override
+    public Object getNodeObject() {
+        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
+        descriptor.addProperty("name", getAttributeId());
+        return descriptor;
     }
 }

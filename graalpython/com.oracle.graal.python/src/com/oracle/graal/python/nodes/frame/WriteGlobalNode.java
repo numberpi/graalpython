@@ -47,11 +47,14 @@ import com.oracle.graal.python.nodes.attributes.SetAttributeNode;
 import com.oracle.graal.python.nodes.expression.ExpressionNode;
 import com.oracle.graal.python.nodes.statement.StatementNode;
 import com.oracle.graal.python.nodes.subscript.SetItemNode;
+import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.NodeChild;
 import com.oracle.truffle.api.dsl.NodeChildren;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.instrumentation.StandardTags;
+import com.oracle.truffle.api.instrumentation.Tag;
 
 @NodeChildren({@NodeChild(value = "rhs", type = ExpressionNode.class)})
 public abstract class WriteGlobalNode extends StatementNode implements GlobalNode, WriteNode {
@@ -147,5 +150,17 @@ public abstract class WriteGlobalNode extends StatementNode implements GlobalNod
 
     public String getAttributeId() {
         return attributeId;
+    }
+
+    @Override
+    public boolean hasTag(Class<? extends Tag> tag) {
+        return tag == StandardTags.WriteVariableTag.class || super.hasTag(tag);
+    }
+
+    @Override
+    public Object getNodeObject() {
+        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
+        descriptor.addProperty("name", getAttributeId());
+        return descriptor;
     }
 }
