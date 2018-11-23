@@ -1004,7 +1004,10 @@ public final class PythonTreeTranslator extends Python3BaseVisitor<Object> {
                     asName = ic.NAME(1).getText();
                 }
                 fromlist.add(attribute);
-                asNodes.add((WriteNode) environment.findVariable(asName).makeWriteNode(EmptyNode.create()));
+                WriteNode writeNode = (WriteNode) environment.findVariable(asName).makeWriteNode(EmptyNode.create());
+                ((PNode) writeNode).setInstrumentable(false);
+                deriveSourceSection(ic, writeNode);
+                asNodes.add(writeNode);
             }
             return factory.createImportFrom(sb.toString(), fromlist.toArray(new String[0]), asNodes.toArray(new WriteNode[0]), level);
         } else {
