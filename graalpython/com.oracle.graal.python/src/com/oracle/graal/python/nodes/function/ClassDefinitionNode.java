@@ -47,7 +47,7 @@ public class ClassDefinitionNode extends FunctionDefinitionNode {
     @Override
     public NodeObjectDescriptor getNodeObject() {
         NodeObjectDescriptor descriptor = super.getNodeObject();
-        descriptor.addProperty(StandardTags.DeclarationTag.KIND, StandardTags.DeclarationTag.Kind.Class.getValue());
+        descriptor.addProperty(StandardTags.DeclarationTag.KIND, "class");
         return descriptor;
     }
 }

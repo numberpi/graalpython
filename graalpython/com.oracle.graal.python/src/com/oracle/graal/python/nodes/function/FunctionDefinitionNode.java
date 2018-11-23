@@ -109,9 +109,9 @@ public class FunctionDefinitionNode extends ExpressionDefinitionNode {
         descriptor.addProperty(DeclarationTag.NAME, functionName);
         if (enclosingClassName != null) {
             descriptor.addProperty(DeclarationTag.CONTAINER, enclosingClassName);
-            descriptor.addProperty(DeclarationTag.KIND, DeclarationTag.Kind.Method.getValue());
+            descriptor.addProperty(DeclarationTag.KIND, "method");
         } else {
-            descriptor.addProperty(DeclarationTag.KIND, DeclarationTag.Kind.Function.getValue());
+            descriptor.addProperty(DeclarationTag.KIND, "function");
         }
         return descriptor;
     }
