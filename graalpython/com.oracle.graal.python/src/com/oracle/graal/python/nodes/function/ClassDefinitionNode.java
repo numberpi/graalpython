@@ -30,18 +30,15 @@ import com.oracle.graal.python.nodes.expression.ExpressionNode;
 import com.oracle.graal.python.nodes.statement.StatementNode;
 import com.oracle.graal.python.parser.DefinitionCellSlots;
 import com.oracle.graal.python.parser.ExecutionCellSlots;
-import com.oracle.graal.python.runtime.PythonCore;
 import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.truffle.api.RootCallTarget;
-import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.instrumentation.StandardTags;
 
 public class ClassDefinitionNode extends FunctionDefinitionNode {
 
-    public ClassDefinitionNode(String functionName, String enclosingClassName, ExpressionNode doc, PythonCore core, Arity arity, StatementNode defaults, RootCallTarget callTarget,
-                    FrameDescriptor frameDescriptor,
+    public ClassDefinitionNode(String functionName, String enclosingClassName, ExpressionNode doc, Arity arity, StatementNode defaults, RootCallTarget callTarget,
                     DefinitionCellSlots definitionCellSlots, ExecutionCellSlots executionCellSlots) {
-        super(functionName, enclosingClassName, doc, core, arity, defaults, callTarget, frameDescriptor, definitionCellSlots, executionCellSlots);
+        super(functionName, enclosingClassName, doc, arity, defaults, callTarget, definitionCellSlots, executionCellSlots);
     }
 
     @Override
