@@ -420,6 +420,11 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
     }
 
     @Override
+    protected List<String> getSignatureHelpTriggerCharacters() {
+        return Arrays.asList("(");
+    }
+
+    @Override
     protected Object boxPrimitive(Object primitive) {
         if (primitive instanceof Integer) {
             return getCore().factory().createInt((Integer) primitive);
