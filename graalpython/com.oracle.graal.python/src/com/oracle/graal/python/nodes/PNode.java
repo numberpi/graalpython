@@ -81,10 +81,6 @@ public abstract class PNode extends PNodeWithContext implements InstrumentableNo
         return getSourceSection() != null;
     }
 
-    public void setInstrumentable(boolean instrumentable) {
-        this.instrumentable = instrumentable;
-    }
-
     public void markAsRoot() {
         isRoot = true;
     }
