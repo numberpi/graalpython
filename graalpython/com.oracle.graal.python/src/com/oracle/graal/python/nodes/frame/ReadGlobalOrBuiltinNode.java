@@ -28,6 +28,9 @@ package com.oracle.graal.python.nodes.frame;
 import static com.oracle.graal.python.runtime.exception.PythonErrorType.KeyError;
 import static com.oracle.graal.python.runtime.exception.PythonErrorType.NameError;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.oracle.graal.python.builtins.objects.PNone;
 import com.oracle.graal.python.builtins.objects.common.HashingStorageNodes;
 import com.oracle.graal.python.builtins.objects.dict.PDict;
@@ -42,7 +45,7 @@ import com.oracle.graal.python.nodes.subscript.GetItemNode;
 import com.oracle.graal.python.runtime.PythonContext;
 import com.oracle.graal.python.runtime.PythonCore;
 import com.oracle.graal.python.runtime.exception.PException;
-import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
+import com.oracle.graal.python.runtime.interop.InteropMap;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Specialization;
@@ -146,8 +149,8 @@ public abstract class ReadGlobalOrBuiltinNode extends ExpressionNode implements 
 
     @Override
     public Object getNodeObject() {
-        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("name", getAttributeId());
-        return descriptor;
+        Map<String, Object> descriptor = new HashMap<>();
+        descriptor.put("name", getAttributeId());
+        return new InteropMap(descriptor);
     }
 }

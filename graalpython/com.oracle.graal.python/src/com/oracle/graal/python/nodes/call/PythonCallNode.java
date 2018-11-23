@@ -25,6 +25,9 @@
  */
 package com.oracle.graal.python.nodes.call;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.oracle.graal.python.builtins.objects.function.PKeyword;
 import com.oracle.graal.python.nodes.BuiltinNames;
 import com.oracle.graal.python.nodes.EmptyNode;
@@ -42,7 +45,7 @@ import com.oracle.graal.python.nodes.frame.ReadLocalVariableNode;
 import com.oracle.graal.python.nodes.frame.ReadNameNode;
 import com.oracle.graal.python.nodes.interop.PForeignToPTypeNode;
 import com.oracle.graal.python.runtime.exception.PythonErrorType;
-import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
+import com.oracle.graal.python.runtime.interop.InteropMap;
 import com.oracle.truffle.api.debug.DebuggerTags;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Fallback;
@@ -288,11 +291,11 @@ public abstract class PythonCallNode extends ExpressionNode {
 
     @Override
     public Object getNodeObject() {
-        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("name", calleeName);
+        Map<String, Object> descriptor = new HashMap<>();
+        descriptor.put("name", calleeName);
         if (argumentNodes != null) {
-            descriptor.addProperty("numberOfArguments", argumentNodes.length);
+            descriptor.put("numberOfArguments", argumentNodes.length);
         }
-        return descriptor;
+        return new InteropMap(descriptor);
     }
 }

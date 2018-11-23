@@ -40,6 +40,9 @@
  */
 package com.oracle.graal.python.nodes.frame;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.oracle.graal.python.builtins.objects.common.HashingCollectionNodes;
 import com.oracle.graal.python.builtins.objects.dict.PDict;
 import com.oracle.graal.python.builtins.objects.function.PArguments;
@@ -47,7 +50,7 @@ import com.oracle.graal.python.nodes.attributes.SetAttributeNode;
 import com.oracle.graal.python.nodes.expression.ExpressionNode;
 import com.oracle.graal.python.nodes.statement.StatementNode;
 import com.oracle.graal.python.nodes.subscript.SetItemNode;
-import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
+import com.oracle.graal.python.runtime.interop.InteropMap;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.NodeChild;
 import com.oracle.truffle.api.dsl.Specialization;
@@ -158,8 +161,8 @@ public abstract class WriteGlobalNode extends StatementNode implements GlobalNod
 
     @Override
     public Object getNodeObject() {
-        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("name", getAttributeId());
-        return descriptor;
+        Map<String, Object> descriptor = new HashMap<>();
+        descriptor.put("name", getAttributeId());
+        return new InteropMap(descriptor);
     }
 }

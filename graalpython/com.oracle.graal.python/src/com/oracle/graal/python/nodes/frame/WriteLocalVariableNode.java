@@ -25,6 +25,9 @@
  */
 package com.oracle.graal.python.nodes.frame;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.oracle.graal.python.builtins.objects.PNone;
 import com.oracle.graal.python.builtins.objects.common.KeywordsStorage;
 import com.oracle.graal.python.builtins.objects.function.PKeyword;
@@ -32,7 +35,7 @@ import com.oracle.graal.python.builtins.objects.ints.PInt;
 import com.oracle.graal.python.nodes.expression.ExpressionNode;
 import com.oracle.graal.python.nodes.frame.WriteLocalVariableNodeGen.WriteLocalFrameSlotNodeGen;
 import com.oracle.graal.python.nodes.statement.StatementNode;
-import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
+import com.oracle.graal.python.runtime.interop.InteropMap;
 import com.oracle.truffle.api.dsl.NodeChild;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.frame.FrameSlot;
@@ -208,8 +211,8 @@ public abstract class WriteLocalVariableNode extends StatementNode implements Wr
 
     @Override
     public Object getNodeObject() {
-        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("name", getIdentifier().toString());
-        return descriptor;
+        Map<String, Object> descriptor = new HashMap<>();
+        descriptor.put("name", getIdentifier());
+        return new InteropMap(descriptor);
     }
 }

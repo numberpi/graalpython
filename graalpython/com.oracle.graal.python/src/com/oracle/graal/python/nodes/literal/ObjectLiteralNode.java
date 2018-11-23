@@ -25,8 +25,11 @@
  */
 package com.oracle.graal.python.nodes.literal;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.oracle.graal.python.builtins.objects.ints.PInt;
-import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
+import com.oracle.graal.python.runtime.interop.InteropMap;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.NodeInfo;
 
@@ -54,8 +57,8 @@ public final class ObjectLiteralNode extends LiteralNode {
 
     @Override
     public Object getNodeObject() {
-        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("literal", object);
-        return descriptor;
+        Map<String, Object> descriptor = new HashMap<>();
+        descriptor.put("literal", object);
+        return new InteropMap(descriptor);
     }
 }

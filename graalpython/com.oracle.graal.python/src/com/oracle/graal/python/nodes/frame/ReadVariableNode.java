@@ -28,8 +28,11 @@ package com.oracle.graal.python.nodes.frame;
 import static com.oracle.graal.python.nodes.frame.FrameSlotIDs.RETURN_SLOT_ID;
 import static com.oracle.graal.python.runtime.exception.PythonErrorType.UnboundLocalError;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.oracle.graal.python.builtins.objects.PNone;
-import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
+import com.oracle.graal.python.runtime.interop.InteropMap;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.frame.Frame;
@@ -103,9 +106,10 @@ public abstract class ReadVariableNode extends FrameSlotNode implements ReadLoca
         return tag == StandardTags.ReadVariableTag.class || super.hasTag(tag);
     }
 
+    @Override
     public Object getNodeObject() {
-        NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
-        descriptor.addProperty("name", getSlot().getIdentifier().toString());
-        return descriptor;
+        Map<String, Object> descriptor = new HashMap<>();
+        descriptor.put("name", getSlot().getIdentifier());
+        return new InteropMap(descriptor);
     }
 }

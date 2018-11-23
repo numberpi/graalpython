@@ -25,14 +25,17 @@
  */
 package com.oracle.graal.python.nodes.function;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.oracle.graal.python.builtins.objects.function.Arity;
 import com.oracle.graal.python.nodes.expression.ExpressionNode;
 import com.oracle.graal.python.nodes.statement.StatementNode;
 import com.oracle.graal.python.parser.DefinitionCellSlots;
 import com.oracle.graal.python.parser.ExecutionCellSlots;
-import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
+import com.oracle.graal.python.runtime.interop.InteropMap;
 import com.oracle.truffle.api.RootCallTarget;
-import com.oracle.truffle.api.instrumentation.StandardTags;
+import com.oracle.truffle.api.instrumentation.StandardTags.DeclarationTag;
 
 public class ClassDefinitionNode extends FunctionDefinitionNode {
 
@@ -42,9 +45,15 @@ public class ClassDefinitionNode extends FunctionDefinitionNode {
     }
 
     @Override
-    public NodeObjectDescriptor getNodeObject() {
-        NodeObjectDescriptor descriptor = super.getNodeObject();
-        descriptor.addProperty(StandardTags.DeclarationTag.KIND, "class");
-        return descriptor;
+    public Object getNodeObject() {
+        Map<String, Object> descriptor = new HashMap<>();
+        descriptor.put(DeclarationTag.NAME, functionName);
+        if (enclosingClassName != null) {
+            descriptor.put(DeclarationTag.CONTAINER, enclosingClassName);
+            descriptor.put(DeclarationTag.KIND, "method");
+        } else {
+            descriptor.put(DeclarationTag.KIND, "function");
+        }
+        return new InteropMap(descriptor);
     }
 }

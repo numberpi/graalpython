@@ -30,7 +30,9 @@ import java.net.URL;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
@@ -67,7 +69,6 @@ import com.oracle.graal.python.runtime.PythonOptions;
 import com.oracle.graal.python.runtime.PythonParser.ParserMode;
 import com.oracle.graal.python.runtime.exception.PException;
 import com.oracle.graal.python.runtime.interop.InteropMap;
-import com.oracle.graal.python.runtime.interop.NodeObjectDescriptor;
 import com.oracle.graal.python.runtime.object.PythonObjectFactory;
 import com.oracle.truffle.api.Assumption;
 import com.oracle.truffle.api.CallTarget;
@@ -355,36 +356,36 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
         RootNode rootNode = node.getRootNode();
         if (frame != null) {
             PDict locals = factory.createDictLocals(frame, false);
-            scopes.add(Scope.newBuilder("locals", NodeObjectDescriptor.fromPDict(locals)).node(rootNode).build());
+            scopes.add(Scope.newBuilder("locals", scopeFromObject(locals)).node(rootNode).build());
             Frame generatorFrame = PArguments.getGeneratorFrameSafe(frame);
             if (generatorFrame != null) {
                 PDict generatorLocals = factory.createDictLocals(generatorFrame, false);
-                scopes.add(Scope.newBuilder("locals", NodeObjectDescriptor.fromPDict(generatorLocals)).node(rootNode).build());
+                scopes.add(Scope.newBuilder("locals", scopeFromObject(generatorLocals)).node(rootNode).build());
             }
             PythonObject globals = PArguments.getGlobalsSafe(frame);
             if (globals != null) {
                 scopes.add(Scope.newBuilder("globals()", scopeFromObject(globals)).build());
             }
         } else {
-            NodeObjectDescriptor localsDesc = new NodeObjectDescriptor();
+            Map<String, Object> localsDesc = new HashMap<>();
             for (Object s : rootNode.getFrameDescriptor().getIdentifiers()) {
                 if (!s.toString().startsWith("<")) {
-                    localsDesc.addProperty(s.toString(), PNone.NO_VALUE);
+                    localsDesc.put(s.toString(), PNone.NO_VALUE);
                 }
             }
-            scopes.add(Scope.newBuilder("locals (static)", localsDesc).node(rootNode).build());
+            scopes.add(Scope.newBuilder("locals (static)", new InteropMap(localsDesc)).node(rootNode).build());
 
             if (rootNode instanceof ModuleRootNode) {
-                NodeObjectDescriptor descriptor = new NodeObjectDescriptor();
+                Map<String, Object> descriptor = new HashMap<>();
                 rootNode.accept(new NodeVisitor() {
                     public boolean visit(Node visitedNode) {
                         if (visitedNode instanceof WriteGlobalNode) {
-                            descriptor.addProperty(((WriteGlobalNode) visitedNode).getAttributeId(), PNone.NO_VALUE);
+                            descriptor.put(((WriteGlobalNode) visitedNode).getAttributeId(), PNone.NO_VALUE);
                         }
                         return true;
                     }
                 });
-                scopes.add(Scope.newBuilder(rootNode.getName() + " (static)", descriptor).node(rootNode).build());
+                scopes.add(Scope.newBuilder(rootNode.getName() + " (static)", new InteropMap(localsDesc)).node(rootNode).build());
             }
         }
         return scopes;
