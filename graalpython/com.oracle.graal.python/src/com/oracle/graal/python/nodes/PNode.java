@@ -45,8 +45,6 @@ public abstract class PNode extends PNodeWithContext implements InstrumentableNo
     @CompilationFinal private SourceSection sourceSection;
     @CompilationFinal private boolean isRoot = false;
 
-    private Boolean instrumentable = null;
-
     @Override
     public String toString() {
         CompilerAsserts.neverPartOfCompilation();
@@ -75,9 +73,6 @@ public abstract class PNode extends PNodeWithContext implements InstrumentableNo
     }
 
     public boolean isInstrumentable() {
-        if (instrumentable != null) {
-            return instrumentable;
-        }
         return getSourceSection() != null;
     }
 
