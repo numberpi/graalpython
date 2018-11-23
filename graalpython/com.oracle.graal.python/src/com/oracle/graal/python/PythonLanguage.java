@@ -26,7 +26,6 @@
 package com.oracle.graal.python;
 
 import java.io.IOException;
-import java.math.BigInteger;
 import java.net.URL;
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -463,10 +462,6 @@ public final class PythonLanguage extends TruffleLanguage<PythonContext> {
 
         if (primitive instanceof Byte) {
             return getCore().factory().createInt((Byte) primitive);
-        }
-
-        if (primitive instanceof BigInteger) {
-            return getCore().factory().createInt((BigInteger) primitive);
         }
 
         if (primitive instanceof Double || primitive instanceof Float) {
