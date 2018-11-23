@@ -64,6 +64,7 @@ import com.oracle.graal.python.builtins.objects.object.PythonBuiltinObject;
 import com.oracle.graal.python.builtins.objects.object.PythonObject;
 import com.oracle.graal.python.builtins.objects.type.PythonBuiltinClass;
 import com.oracle.graal.python.builtins.objects.type.PythonClass;
+import com.oracle.graal.python.nodes.SpecialAttributeNames;
 import com.oracle.graal.python.nodes.SpecialMethodNames;
 import com.oracle.graal.python.nodes.attributes.DeleteAttributeNode;
 import com.oracle.graal.python.nodes.attributes.LookupInheritedAttributeNode;
@@ -616,7 +617,7 @@ public class PythonMessageResolution {
         }
     }
 
-    @Resolve(message = "de.hpi.swa.trufflelsp.interop.GetSignature")
+    @Resolve(message = "org.graalvm.tools.lsp.interop.GetSignature")
     @SuppressWarnings("unknown-message")
     public abstract static class PForeignGetSignatureNode extends Node {
 
@@ -627,7 +628,7 @@ public class PythonMessageResolution {
                 SignatureDescriptor signature = new SignatureDescriptor(callable.getName());
 
                 for (String paramId : arity.getParameterIds()) {
-                    if ((receiver instanceof PMethod || receiver instanceof PBuiltinMethod) && paramId.equals("self")) {
+                    if ((receiver instanceof PMethod || receiver instanceof PBuiltinMethod || receiver instanceof PythonBuiltinClass) && paramId.equals("self")) {
                         continue;
                     }
                     signature.addParameter(paramId);
@@ -645,6 +646,15 @@ public class PythonMessageResolution {
                 return signature;
             }
             throw UnsupportedTypeException.raise(new Object[]{receiver});
+        }
+    }
+
+    @Resolve(message = "org.graalvm.tools.lsp.interop.GetDocumentation")
+    @SuppressWarnings("unknown-message")
+    public abstract static class PForeignGetDocumentationNode extends Node {
+
+        public Object access(@SuppressWarnings("unused") VirtualFrame frame, PythonObject receiver) {
+            return receiver.getAttribute(SpecialAttributeNames.__DOC__);
         }
     }
 
