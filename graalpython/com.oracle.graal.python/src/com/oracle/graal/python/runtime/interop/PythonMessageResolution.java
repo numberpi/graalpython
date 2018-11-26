@@ -872,6 +872,7 @@ public class PythonMessageResolution {
                 try {
                     arity = callable.getArity();
                 } catch (ClassCastException e) {
+                    // TODO temporary fix for erroneous getArity()
                     throw UnsupportedTypeException.raise(new Object[]{receiver});
                 }
                 SignatureDescriptor signature = new SignatureDescriptor(callable.getName());
